@@ -17,4 +17,4 @@ Caranya?<p>
   sh /tmp/autoinstall</code></pre>
 4.tunggu sampai selesai, kalau dah selesai cek ipyourgl-inet:81  
 
-ingat ini masih sangat awal, segelah reskio tanggun sendiri :/
+ingat ini masih sangat awal, segalah resiko tanggung sendiri yah :/
