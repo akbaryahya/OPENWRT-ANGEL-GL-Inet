@@ -1,0 +1,1 @@
+<font color=red><b>Ping is NOT running</b></font>

@@ -1,0 +1,764 @@
+#!/bin/sh
+
+stop () {
+    prof=`grep "profile " /root/config |grep -v source |awk -F"'" '{print $2}'`
+    IFACE=$(grep IFACE /etc/config/gsm |awk -F"'" '{print $2}')
+    waktu=`eval date +%Y-%m-%d-%H:%M:%S`
+    echo "stoped" > /tmp/prf
+    echo "$waktu Profile Stoped...." > /www/profile/dial.log
+    ifdown $IFACE
+    vpn stop
+    /etc/init.d/profile disable
+    echo "stoping profile  OK"
+    echo " "
+}
+
+start () {
+        waktu=`eval date +%Y-%m-%d-%H:%M:%S`
+        pid=$(ps |grep -w vpn |grep -v vpn |awk -F" " '{print $1}')
+        if [ $pid ];then
+            sleep 2
+            vpn stop 
+            pid=$(ps |grep -w vpn |grep -v vpn |awk -F" " '{print $1}')
+            if [ $pid ];then
+               sleep 2
+               vpn stop
+               pid=$(ps |grep -w vpn |grep -v vpn |awk -F" " '{print $1}')
+               if [ $pid ];then
+                   echo "$waktu Error.. vpn lounching gaga di restart.." > /www/profile/dial.log
+                   exit 1
+               fi  
+            fi
+
+        fi
+        echo "$waktu OpenVpn Started...." > /www/profile/vpn.log
+
+        ls /etc/init.d |grep profile > /dev/null
+
+if [ $? == 1 ];then
+      cat > /etc/init.d/profile << END
+#!/bin/sh /etc/rc.common
+START=99
+
+start () {
+   profile start &
+}
+
+stop () {
+   profile stop
+}
+
+restart () {
+  profile start &
+}
+END
+chmod 755 /etc/init.d/profile
+fi
+        list=$(ls /root/profiles |grep -w $prof)
+        if [ $list ];then
+           cp=`grep "profile " /root/config |awk -F"'" '{print $2}'`
+           sed -i -e "s/$cp/$prof/g" /root/config
+           profile='/root/profiles/'$prof
+           /etc/init.d/profile enable
+           echo "started" > /tmp/prf
+           echo "profile $prof di aktifkan"
+           vpn start & 
+           echo "$waktu Profile : $prof Started...." > /www/profile/dial.log
+		   grep "Profile : .*. Started" /www/profile/dial.log >> /www/profile/restart.log
+		   TODAY=`eval date +%Y-%m-%d`
+		   LAST=`tail -n 1 /www/profile/restart.log | sed 's/^.*-//; s/ .*//';`
+		   COUNT=`grep $TODAY /www/profile/restart.log | wc -l | sed 's/ \/www\/profile\/restart.log//'`
+		   echo "<b><font color=red>Your internet has been restarted $COUNT times today. Last restart at $LAST</font></b>" > /www/profile/counter.log
+         else
+           echo "profile $prof belum tersedia"
+           echo "profile yang tersedia:"
+           list=$(ls /root/profiles)
+           for line in $list
+           do
+                echo $line
+           done
+        fi
+           }
+
+case $1 in
+"status-koneksi")
+   profile=`grep "profile " /root/config |grep -v source_update |awk -F"'" '{print $2}'`
+   update=`grep "update " /root/profiles/$profile |awk -F"'" '{print $2}'`
+   use_config=$(grep use_config /root/config|awk -F"'" '{print $2}')
+   file_config=$(grep file_config /root/config|awk -F"'" '{print $2}')
+   waktu=`eval date +%Y-%m-%d-%H:%M:%S`
+   IFACE=$(grep IFACE /etc/config/gsm |awk -F"'" '{print $2}')
+   apn=`uci show network.$IFACE.apn`
+   if [ $? == 1 ];then
+       apn="interface tdk valid"
+   else
+       apn=`echo $apn |awk -F"=" '{print $2}'`
+   fi
+   echo "    STATUS KONEKSI ROUTER"
+   echo "=============================="
+   echo "Waktu     : $waktu"
+   echo "Profile   : $profile $update"
+   if [ $use_config ];then
+       if [ $use_config == 'yes' ];then
+   echo "Config vpn : $file_config"
+       else
+   echo "Config vpn : Default"
+       fi
+   else
+   echo "Config vpn : Default"
+   fi
+   echo "APN modem : $apn"
+   ip=`ifconfig |grep P-t-P:10.64.64.64 |awk -F':' '{print $2}' |awk -F" " '{print $1}'`
+   if [ $ip ];then
+       echo "IP Modem  : $ip"       
+       RX=$(ifconfig 3g-$IFACE | awk -F[\(\)] '/bytes/ {printf "%s",$2}')
+	TX=$(ifconfig 3g-$IFACE | awk -F[\(\)] '/bytes/ {printf "%s",$4}')
+       echo "Traffiq : RX $RX - TX $TX"
+       ipv=$(ifconfig tun0 |grep inet |awk -F":" '{print $3}' |awk -F" " '{print $1}')
+       if [ $ipv ];then
+           echo "Status VPN: terkonek ke server"
+           echo "IP VPN    : $ipv"
+       else
+           echo "Status VPN: tdk terkonek ke server"
+       fi
+   fi 
+   echo "=============================="
+
+;;
+
+"update-inject")
+     echo "update scrypt inject....."
+     cd /tmp
+     rm -f socks
+     wget $source_update/bin/socks
+     if [ $? == 0 ];then
+        chmod 755 socks
+        cp -f socks /usr/bin
+        echo "update scrypt inject sukses..."
+        rm -f socks
+     fi     
+;;
+"update")
+    source_update=`grep source_update /root/config |awk -F"'" '{print $2}'`
+    if [ $2 ];then
+       cd /tmp
+       if [ $2 == 'list' ];then            
+           rm -f profile-list.txt
+           rm -f /tmp/update
+           wget $source_update/profile-list.txt
+           echo " "
+           echo "profile yng tersedia di server"
+           echo "=============================="
+           if [ $? == 0 ];then
+                while read line
+                do
+                   echo $line
+                   echo $line >> /tmp/update
+                done < profile-list.txt
+                echo "============================="
+                exit 0
+           else
+               echo "gagal" > /tmp/update
+               exit 1
+           fi
+       fi  
+       rm -f $2
+       wget $source_update/$2
+       if [ $? == 0 ];then
+          cp -f $2 /root/profiles
+          chmod 666 /root/profiles/*
+          echo "update profile $2 sukses..."
+       else
+          echo "download profile $2 gagal..."
+          exit;
+       fi
+    else
+       echo "update scrypt profile....."
+       cd /tmp
+       rm -f profile
+       wget $source_update/bin/profile
+       if [ $? == 0 ];then
+          chmod 755 profile
+          cp -f profile /usr/bin
+          echo "update scrypt profile sukses..."
+          rm -f profile
+          profile scrypt-install vpn
+          profile scrypt-install gsm
+          profile scrypt-install socks
+       else
+          echo "update scrypt gagal.. server tdk merespon"
+       fi
+    fi 
+;;
+"info")
+    if [ $2 ];then
+      grep "#info" /root/profiles/$2 |awk -F"#info " '{print $2}'
+   
+    fi
+;;
+"list")
+    list=`ls /root/profiles`
+    echo " "
+    echo "profile yang sudah terinstall"
+    echo "=============================="
+    for pf in $list
+    do
+        up=`grep "#info" /root/profiles/$pf |grep update |awk -F" " '{print $3}' |awk -F"'" '{print $1}'`
+        echo "$pf $up"
+    done
+    echo "=============================="
+;;
+"stop")
+   stop
+;;
+"show")
+       pf=`grep "profile " /root/config |awk -F"'" '{print $2}'`
+       echo "profile saat ini: $pf"
+       while read line           
+       do           
+          echo $line |grep "#info" |awk -F"'" '{print $2}'
+       done < /root/profiles/$pf
+       echo " "
+       cat /tmp/prf |grep started > /dev/nul
+       if [ $? == 0 ];then
+            echo "status profile started.."
+       else
+            echo "status profile stoped.."
+       fi
+;;
+"start")
+       arg=$2
+       ps |grep vpn |grep -v grep > /dev/nul
+       if [ $? == 0 ];then
+           killall -9 vpn
+       fi 
+       ps |grep openvpn |grep -v grep > /dev/nul
+       if [ $? == 0 ];then
+           killall -9 openvpn
+       fi 
+       ps |grep socks |grep -v grep > /dev/nul
+       if [ $? == 0 ];then
+           killall -9 socks
+       fi 
+    if [ $arg ];then
+           prof=$arg
+           start
+    else
+        prof=`grep "profile " /root/config |grep -v source |awk -F"'" '{print $2}'`
+        start
+    fi
+;;
+"hw-info")
+    os=`uname -a |awk -F"#" '{print $1}'`
+    chipset=`cat /proc/cpuinfo |grep 'system type' |awk -F":" '{print $2}'`
+    model=`cat /proc/cpuinfo |grep 'machine' |awk -F":" '{print $2}'`
+    cpu=`cat /proc/cpuinfo |grep 'cpu model' |awk -F":" '{print $2}'`
+    clck=`cat /proc/cpuinfo |grep 'BogoMIPS' |awk -F":" '{print $2}'`
+    mem=`cat /proc/meminfo |grep 'MemTotal' |awk -F":" '{print $2}'`
+    ver=`profile version`
+    echo "Operating system : $os"
+    echo "Model CPU : $cpu"
+    echo "Chipset : $chipset"
+    echo "Clock CPU : $clck Mhz"
+    if [ $model ];then
+    echo "Machine : $model"
+    else
+         hardware=$(cat /proc/cpuinfo |grep 'Hardware' |awk -F":" '{print $2}')
+    echo "Hardware : $hardware" 
+    fi 
+    echo "Ram : $mem"
+    echo "Scrypt version : $ver"
+    
+
+;;
+"scrypt-install")
+     if [ $2 ];then
+       source_update=`grep source_update /root/config |awk -F"'" '{print $2}'`
+       echo "install tambahan scrypt.."
+       cd /tmp
+       rm -f $2
+       wget $source_update/bin/$2
+       if [ $? == 0 ];then             
+           chmod 755 $2
+           cp -f $2 /usr/bin
+         echo "install scrypt $2 sukses..."
+       fi 
+     else
+       echo "perintah yang tersedia:"
+       echo "profile scrypt-install [namascrypt]"
+    fi
+;;
+"scrypt-list")
+           source_update=`grep source_update /root/config |awk -F"'" '{print $2}'`
+           rm -f scrypt-list.txt
+           rm -f /tmp/update
+           wget $source_update/bin/scrypt-list.txt
+           echo " "
+           echo "scrypt yng tersedia di server"
+           echo "=============================="
+           if [ $? == 0 ];then
+                while read line
+                do
+                   echo $line
+                   echo $line |awk -F" " '{print $1}' >> /tmp/update
+                done < scrypt-list.txt
+                echo "============================="
+                exit 0
+           else
+               echo "gagal" > /tmp/update
+               exit 1
+           fi
+
+;;
+"install")
+   echo "install GL_INET scrypt profile by mikodemos.."
+   echo "cek koneksi ke server scrypt"
+   if [ $3 ];then
+     if [ $3 == '-f' ];then
+       installpack='no'
+     else
+       echo "perintah yng benar : profile install -f"
+       exit 1
+     fi
+   else
+       installpack='yes'   
+   fi
+
+   if [ $installpack == 'yes' ];then 
+   sed -i 's/src\/gz barrier_breaker_telephony/#src\/gz barrier_breaker_telephony/g' /etc/opkg.conf
+   opkg update > /dev/null
+   if [ $? == 1 ];then
+      echo "Koneksi ke Repo gagal.."
+      exit 1
+   else
+       echo "koneksi ke Repo OK.."
+       opkg list |grep openvpn-openssl > /dev/null 
+       if [ $? == 1 ];then
+           opkg install openvpn
+       else
+           opkg install openvpn-openssl
+       fi
+       opkg install python pyserial php5 php5-cgi php5-mod-session uhttpd
+   fi
+   fi
+  
+   cp -f profile /usr/bin/
+   chmod 755 /usr/bin/profile
+       source_update=http://miko.pedode.com:81/profile
+       echo "install scrypt vpn launching.."
+       cd /tmp
+       rm -f vpn
+       wget $source_update/bin/vpn
+       if [ $? == 0 ];then             
+           chmod 755 vpn
+           cp -f vpn /usr/bin
+       else
+          echo "install scrypt vpn launching gagal.."
+          exit 1          
+       fi 
+       echo "install scrypt inject.."
+       cd /tmp
+       rm -f socks
+       wget $source_update/bin/socks
+       if [ $? == 0 ];then             
+           chmod 755 socks
+           cp -f socks /usr/bin
+       else
+          echo "install scrypt socks gagal.."
+          exit 1           
+       fi 
+       echo "install scrypt gsm.."
+       cd /tmp
+       rm -f gsm
+       wget $source_update/bin/gsm
+       if [ $? == 0 ];then             
+           chmod 755 gsm
+           cp -f gsm /usr/bin
+       else
+          echo "install scrypt gsm gagal.."
+          exit 1          
+       fi 
+
+
+   echo "Konfigurasi ..."
+   cd /root
+   rm -rf *
+   mkdir profiles
+   mkdir crt
+   ls /etc/openvpn > /dev/null
+   if [ $? == 0 ];then
+       cd /etc/openvpn
+       rm -rf *
+   else
+       mkdir /etc/openvpn
+   fi
+cat > /etc/init.d/profile << END
+#!/bin/sh /etc/rc.common
+START=99
+
+start () {
+   profile start &
+}
+
+stop () {
+   profile stop
+}
+
+restart () {
+  profile start &
+}
+END
+chmod 755 /etc/init.d/profile
+
+cat > /root/crt/sample-client.ovpn << ENDING
+client
+dev tun
+proto tcp
+remote serveropenvpn.com 443
+resolv-retry infinite
+route-method exe
+route 0.0.0.0 0.0.0.0
+nobind
+persist-key
+persist-tun
+auth-user-pass pass.txt
+comp-lzo
+verb 3
+<ca>
+-----BEGIN CERTIFICATE-----
+MIID0TCCAzqgAwIBAgIJAKXo/mxyvXGaMA0GCSqGSIb3DQEBBQUAMIGiMQswCQYD
+VQQGEwJVUzELMAkGA1UECBMCQ0ExFTATBgNVBAcTDFNhbkZyYW5jaXNjbzEVMBMG
+A1UEChMMRm9ydC1GdW5zdG9uMREwDwYDVQQLEwhjaGFuZ2VtZTERMA8GA1UEAxMI
+Y2hhbmdlbWUxETAPBgNVBCkTCGNoYW5nZW1lMR8wHQYJKoZIhvcNAQkBFhBtYWls
+QGhvc3QuZG9tYWluMB4XDTEzMTEwODA5MjMzM1oXDTIzMTEwNjA5MjMzM1owgaIx
+CzAJBgNVBAYTAlVTMQswCQYDVQQIEwJDQTEVMBMGA1UEBxMMU2FuRnJhbmNpc2Nv
+MRUwEwYDVQQKEwxGb3J0LUZ1bnN0b24xETAPBgNVBAsTCGNoYW5nZW1lMREwDwYD
+VQQDEwhjaGFuZ2VtZTERMA8GA1UEKRMIY2hhbmdlbWUxHzAdBgkqhkiG9w0BCQEW
+EG1haWxAaG9zdC5kb21haW4wgZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBAMNQ
+Y+Zs6eE+PSxJV6lBagPa4LooMVuotEnlbWIC1oQpVWUV3XP/VfproDorXoeyIDPN
+4riTKWZDaEWmWkfx1rIZD7afaMbVqDrKGYTvBvBvWa+pcfooiNwvdoAbS+rZ6kAy
+2ujterIjy3H9vIX0nEZGjyy3GBWIX2rbC+I+DhRVAgMBAAGjggELMIIBBzAdBgNV
+HQ4EFgQUTgswEeUzzahT0f8v3Im+VOec4JowgdcGA1UdIwSBzzCBzIAUTgswEeUz
+zahT0f8v3Im+VOec4JqhgaikgaUwgaIxCzAJBgNVBAYTAlVTMQswCQYDVQQIEwJD
+QTEVMBMGA1UEBxMMU2FuRnJhbmNpc2NvMRUwEwYDVQQKEwxGb3J0LUZ1bnN0b24x
+ETAPBgNVBAsTCGNoYW5nZW1lMREwDwYDVQQDEwhjaGFuZ2VtZTERMA8GA1UEKRMI
+Y2hhbmdlbWUxHzAdBgkqhkiG9w0BCQEWEG1haWxAaG9zdC5kb21haW6CCQCl6P5s
+cr1xmjAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBBQUAA4GBALeYIK91EtEQCD3J
+qNPofTOfnPwJj9uu4wMrOlmS5pRIRWfNvmRTYvAJRm1BPA1EQBwn5w97hnT9aakB
+0jhXxsN839vhCIrqeB0efGFx1J0EttI9tZsrmq9fs9qF+7cNfAS3I2tekDiny4Pz
+u2Qyf83Nwzu015PW/Ng9puMtdZXB
+-----END CERTIFICATE-----
+</ca>
+
+ENDING
+cat > /root/crt/pass.txt << END
+username
+password
+END
+cat > /etc/openvpn/client.conf << END
+client
+dev tun
+proto tcp
+remote 127.0.0.1 443
+resolv-retry infinite
+route-method exe
+route 0.0.0.0 0.0.0.0
+http-proxy 127.0.0.1 3339
+http-proxy-retry infinite
+http-proxy-timeout 30
+nobind
+persist-key
+persist-tun
+auth-user-pass /root/user.txt
+comp-lzo
+verb 3
+log /www/profile/vpn.log
+ca /root/crt/ca.crt
+END
+
+cat > /etc/openvpn/client2.conf << END
+client
+dev tun
+proto tcp
+remote 127.0.0.1 443
+resolv-retry infinite
+route-method exe
+route 0.0.0.0 0.0.0.0
+nobind
+persist-key
+persist-tun
+auth-user-pass /root/user.txt
+comp-lzo
+verb 3
+log /www/profile/vpn.log
+ca /root/crt/ca.crt
+END
+
+cat > /root/config << END
+profile 'kuota'
+source_update 'http://miko.pedode.com:81/profile'
+server '110.251.223.161'
+file_config 'client.ovpn'
+use_config 'yes'
+END
+
+cat > /root/user.txt << END
+uservpn
+passvpn
+END
+IFACE=$(uci show network |grep proto=3g |awk -F"." '{print $2}')
+DEV=$(ls /dev |grep ttyUSB3)
+if [ $? == 1 ];then
+    DEV=$(ls /dev |grep ttyUSB2)
+    if [ $? == 1 ];then
+        DEV=$(ls /dev |grep ttyUSB1)        
+        if [ $? == 1 ];then
+            DEV='ttyUSB2'
+        fi
+    fi
+fi
+
+cat > /etc/config/gsm << END
+DEV '$DEV'
+IFACE '$IFACE'
+END
+cat > /root/profiles/snc << END
+enable_iprule 'yes'
+ip_rule '172 39.25 39.24 10.1'
+apn_modem 'telkomsel'
+fail_reconnect 'no'
+fail_reboot 'no'
+use_vpn 'no'
+
+auto_kodok 'yes'
+proxy_ip ''
+proxy_port ''
+payload_inject ''
+#info 'update 01/09/14'
+END
+
+cat > /root/profiles/vpnkuota << END
+enable_iprule 'no'
+ip_rule ''
+apn_modem 'internet'
+fail_reconnect 'no'
+fail_reboot 'no'
+auto_kodok ''
+use_vpn 'yes'
+proxy_ip ''
+proxy_port ''
+payload_inject ''
+#info 'update 01/01/14'
+#info 'koneksi vpn menggunakan kuota'
+END
+
+cat > /root/profiles/kuota << END
+enable_iprule 'no'
+ip_rule ''
+apn_modem 'internet'
+fail_reconnect 'no'
+fail_reboot 'no'
+auto_kodok 'no'
+use_vpn 'no'
+proxy_ip ''
+proxy_port ''
+payload_inject ''
+#info 'update 01/01/14'
+#info 'koneksi standart menggunakan kuota'
+END
+
+cat > /root/profiles/vpnproxy << END
+enable_iprule 'no'
+ip_rule '172 39.25 39.24 10.1'
+apn_modem 'telkomsel'
+fail_reconnect 'no'
+fail_reboot 'no'
+auto_kodok 'no'
+use_vpn 'yes'
+proxy_ip '^server^'
+proxy_port '80'
+payload_inject ''
+#info 'Update 01/09/14' 
+
+END
+
+chmod 666 /root/*
+cat > /etc/config/uhttpd << END
+# Server configuration
+
+config uhttpd main
+	list listen_http	0.0.0.0:81
+	list listen_https	0.0.0.0:443
+	option home		/www/profile/profile
+	option rfc1918_filter 1
+	option max_requests 3
+	option cert		/etc/uhttpd.crt
+	option key		/etc/uhttpd.key
+	option cgi_prefix	/cgi-bin
+	list interpreter	".php=/usr/bin/php-cgi"
+#	list interpreter	".cgi=/usr/bin/perl"
+	option script_timeout	60
+	option network_timeout	30
+	option tcp_keepalive	1
+config cert px5g
+	option days		730
+	option bits		1024
+	option country		DE
+	option state		Berlin
+	option location		Berlin
+	option commonname	OpenWrt
+END
+
+cat > /etc/php5/php.ini << END
+engine = On
+short_open_tag = On
+precision = 12
+
+y2k_compliance = On
+......................................
+; UNIX: "/path1:/path2"
+;include_path = ".:/php/includes"
+doc_root = ""
+user_dir =
+extension_dir = "/usr/lib/php"
+END
+   
+   uci show network |grep ifname |grep tun0 > /dev/null
+   if [ $? = 1 ];then
+       uci show network |grep interface |grep openvpn > /dev/null
+       if [ $? = 1 ];then
+           echo "membuat viritual interface tun.."
+cat >> /etc/config/network << END
+
+config interface 'openvpn'
+	option proto 'none'
+	option ifname 'tun0'
+
+END
+
+cat >> /etc/config/firewall << END
+
+config zone
+	option name 'openvpn'
+	option input 'ACCEPT'
+	option forward 'REJECT'
+	option output 'ACCEPT'
+	option network 'openvpn'
+	option masq '1'
+	option mtu_fix '1'
+
+config forwarding
+	option dest 'wan'
+	option src 'openvpn'
+
+config forwarding
+	option dest 'openvpn'
+	option src 'lan'
+
+END
+       /etc/init.d/network restart
+       /etc/init.d/firewall restart
+       fi
+   fi
+    if [ ${PWD##*/} <> 'bi' ];then
+       rm -f profile
+    fi
+uci set network.lan.dns="8.8.8.8 8.8.4.4"
+uci commit network
+echo "install scrypt profile selesai..."
+;;
+"show-config")
+    if [ $2 ];then
+        v1=`grep -w "enable_iprule " /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v2=`grep -w "ip_rule " /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v3=`grep -w "apn_modem " /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v4=`grep -w "fail_reconnect " /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v5=`grep -w "fail_reboot " /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v6=`grep -w "proxy_ip " /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v7=`grep -w "proxy_port " /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v8=`grep -w "payload_inject" /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v9=`grep -w "auto_kodok" /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v10=`grep -w "use_vpn" /root/profiles/$2 |awk -F"'" '{print $2}'`
+        v11=`grep -w "use_inject" /root/profiles/$2 |awk -F"'" '{print $2}'`
+        echo $v1
+        echo $v2
+        echo $v3
+        echo $v4
+        echo $v5
+        echo $v6
+        echo $v7
+        echo $v8
+        echo $v9
+        echo $v10
+        echo $v11
+    else
+        echo "perintah yang tersedia:"
+        echo "profile show-config [nama profile]" 
+    fi
+;;
+"version")
+   if [ $2 ];then 
+   if [ $2 == 'update' ];then
+       source_update=`grep source_update /root/config |awk -F"'" '{print $2}'`      
+       cd /tmp
+       rm -f profile
+       wget $source_update/bin/profile
+       if [ $? == 0 ];then 
+           echo -n "versi scrypt profile saat ini: "
+           sh profile version
+           echo -n "versi scrypt profile anda    : "
+           profile version
+           rm -f profile
+       fi 
+   else
+     echo "perintah yang tersedia:"
+     echo "profile version update     info versi profile yang ada saat ini" 
+   fi
+   else 
+      echo "24/01/15"
+   fi
+;;
+"wifi-clients")
+echo "  Daftar client WIFI yang terkonek"
+echo "  Host name | IpAddress | MAC address"
+echo ""
+for interface in `iw dev | grep Interface | cut -f 2 -s -d" "`
+do
+  maclist=`iw dev $interface station dump | grep Station | cut -f 2 -s -d" "`
+  for mac in $maclist
+  do
+    ip="UNKN"
+    host=""
+    ip=`cat /tmp/dhcp.leases | cut -f 2,3,4 -s -d" " | grep $mac | cut -f 2 -s -d" "`
+    host=`cat /tmp/dhcp.leases | cut -f 2,3,4 -s -d" " | grep $mac | cut -f 3 -s -d" "`
+    echo -e "$host | $ip | $mac"
+  done
+done
+;;
+*)
+   echo "perintah yang tersedia:"
+   echo "profile version                 info versi profile anda"
+   echo "profile version update          info versi profile yang tersedia saat ini" 
+   echo "profile install                 install scrypt profile dari awal"
+   echo "profile scrypt-install [scrypt] install scrypt tambahan"
+   echo "profile scrypt-list             informasi scrypt yang tersedia"
+   echo "profile show                    informasi profile yang di pake saat ini"
+   echo "profile show-config [nm-profile] informasi config"
+   echo "profile info [nama profile]     tampilkan info tambahan profile"
+   echo "profile list                    informasi profile yang tersedia"
+   echo "profile update                  update scrypt profile"
+   echo "profile update list             informasi profile yang tersedia di server"
+   echo "profile update [nama-profile]   download profile dari server"
+   echo "profile update-inject           update scrypt inject"
+   echo "profile stop                    stop profile yang sedang berjalan"
+   echo "profile start                   start profile tanpa mengubah profile"
+   echo "profile start [nama-profile]    memulai runing profile baru"
+   echo "profile status-modem            informasi status modem"
+   echo "profile status-koneksi          informasi status koneksi"
+   echo "profile hw-info                 informasi os hardware dan lain2"
+   echo "profile wifi-clients            daftar client wifi yang terkonek"
+;;
+esac      
+
+#end
+

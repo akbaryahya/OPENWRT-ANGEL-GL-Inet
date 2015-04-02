@@ -1,0 +1,179 @@
+#!/bin/sh
+case $1 in
+"install")
+		cp -f wgetui /usr/bin/
+		sleep 1
+		chmod 755 /usr/bin/wgetui
+
+		cat > /etc/config/wgetui << END
+config global 'setting'
+		option directory '/mnt/usb'
+		option maxretry '200'
+		option limit '0'
+		option timeout '90'
+		option phonenumber ''
+		option schedule 'off'
+END
+		cat > /etc/init.d/wgetui << END
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2013 OpenWrt.org
+
+START=30
+USE_PROCD=1
+
+start_service()
+{
+	wgetui > /dev/null &
+}
+stop_service()
+{
+    ps |grep wgetui|grep -v grep > /dev/null
+    if [ "\$?" == "0" ];then
+        pid=\$(ps |grep wgetui|grep -v grep|awk -F" " '{print \$1}')
+        kill \$pid
+    fi
+}
+
+END
+		sleep 1
+		chmod 755 /etc/init.d/wgetui
+		echo "install wgetui selesai"
+		echo "WgetUI versi 30/03/2015 by Gallih"
+		exit 0
+;;
+"schedule-on")
+		directory=`uci get wgetui.setting.directory`
+		maxretry=`uci get wgetui.setting.maxretry`
+		limit=`uci get wgetui.setting.limit`
+		timeout=`uci get wgetui.setting.timeout`
+		phonenumber=`uci get wgetui.setting.phonenumber`
+		# Create the directory if it doesn't exist
+		if [ ! -d "$directory" ]; then
+		  mkdir -p "$directory"
+		fi
+
+		# Monitor the log size of wget.log if it's greater than 100KB then reset it back to 0
+		ceklog(){
+			while [ "$(pidof wget)" ] 
+			do
+				sleep 60
+				wgetlog="/www/profile/wget.log"
+				wgetmaxsize="100000"
+				wgetactualsize=$(wc -c "$wgetlog" | cut -f 1 -d ' ')
+				name=`grep "Saving to: " /www/profile/wget.log | tail -n 1`
+				length=`grep -E "Length.*\(" /www/profile/wget.log | tail -n 1`
+				if [ "$wgetactualsize" -ge "$wgetmaxsize" ]; then
+					echo "" > /www/profile/wget.log
+					echo "Ukuran log lebih dari 100KB, log direset..." >> /www/profile/wget.log
+					echo "$name" >> /www/profile/wget.log
+					echo "$length" >> /www/profile/wget.log
+				fi
+			done
+		}
+		ceklog &
+
+		# Start downloading with wget
+		schedule(){
+			wget -c --limit-rate="$limit"K --restrict-file-names=windows --user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0" -i /www/profile/wget/schedule-link.txt -P "$directory" --no-check-certificate -a /www/profile/wget.log -t $maxretry -T $timeout
+			status=$?
+			if [[ ! -z $phonenumber ]]; then
+				if [ "$status" = "0" ]; then
+					#name=`grep "Saving to: " /www/profile/wget.log | sed "s/Saving to: //g; s/'//g" | sed 's~[^[:alnum:]/]\+~~g'`
+					name=`grep "Saving to: " /www/profile/wget.log | tail -n 1 | sed "s/Saving to: //g; s/'//g" | sed 's/[!@#\$%^&*(|)]//g; s/\[//g; s/\]//g' | head -c 100`
+					sukses=`tail -n 1 /www/profile/wget.log`
+					echo "Mengirim SMS notifikasi ke nomer: $phonenumber, mohon tunggu..." >>/www/profile/wget.log
+					gsm sms send $phonenumber "Download berhasil.\File:$name\ $sukses" | grep "OK, sms sukses terkirim ke"
+					if [ "$?" = "0" ]; then
+						echo "SMS notifikasi sukses dikirim" >> /www/profile/wget.log				
+					else
+						echo "SMS notifikasi gagal dikirim" >> /www/profile/wget.log
+					fi
+				else
+					keterangan=`tail -n 1 /www/profile/wget.log | sed 's/\.//g; s/   //g'`
+					gsm sms send $phonenumber "Download berhenti.\File: $name \Keterangan: $keterangan" | grep "OK, sms sukses terkirim ke"
+					if [ "$?" = "0" ]; then
+						echo "SMS notifikasi sukses dikirim" >> /www/profile/wget.log				
+					else
+						echo "SMS notifikasi gagal dikirim" >> /www/profile/wget.log
+					fi
+				fi
+			fi
+		}
+		schedule &
+		exit 0
+;;
+"schedule-off")
+		killall wget
+		sed -i 's/^.*wgetui schedule-on//g' /etc/crontabs/root
+		sed -i 's/^.*wgetui schedule-off//g' /etc/crontabs/root
+		sed -i '/^\s*$/d' /etc/crontabs/root
+		sed -i "s/option schedule 'on'/option schedule 'off'/g" /etc/config/wgetui 
+		/etc/init.d/cron restart
+		cat /www/profile/wget/schedule-link.txt >> /www/profile/wget/schedule-link.done
+		echo "" > /www/profile/wget/schedule-link.txt
+		echo "" >> /www/profile/wget.log
+		echo "<b>Schedule download has been stopped</b>" >> /www/profile/wget.log
+		exit 0
+;;
+esac
+
+directory=`uci get wgetui.setting.directory`
+maxretry=`uci get wgetui.setting.maxretry`
+limit=`uci get wgetui.setting.limit`
+timeout=`uci get wgetui.setting.timeout`
+phonenumber=`uci get wgetui.setting.phonenumber`
+
+# Create the directory if it doesn't exist
+if [ ! -d "$directory" ]; then
+  mkdir -p "$directory"
+fi
+
+# Monitor the log size of wget.log if it's greater than 100KB then reset it back to 0
+ceklog(){
+	while [ "$(pidof wget)" ] 
+	do
+		sleep 60
+		wgetlog="/www/profile/wget.log"
+		wgetmaxsize="100000"
+		wgetactualsize=$(wc -c "$wgetlog" | cut -f 1 -d ' ')
+		name=`grep "Saving to: " /www/profile/wget.log | tail -n 1`
+		length=`grep -E "Length.*\(" /www/profile/wget.log | tail -n 1`
+		if [ "$wgetactualsize" -ge "$wgetmaxsize" ]; then
+			echo "" > /www/profile/wget.log
+			echo "Ukuran log lebih dari 100KB, log direset..." >> /www/profile/wget.log
+			echo "$name" >> /www/profile/wget.log
+			echo "$length" >> /www/profile/wget.log
+		fi
+	done
+}
+ceklog &
+
+# Start downloading with wget
+wget -c --limit-rate="$limit"K --restrict-file-names=windows --user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:21.0) Gecko/20100101 Firefox/21.0" -i /www/profile/wget/wget-download-link.txt -P "$directory" --no-check-certificate -a /www/profile/wget.log -t $maxretry -T $timeout
+status=$?
+cat /www/profile/wget/wget-download-link.txt > /www/profile/wget/wget-download-link.done
+cat /www/profile/wget/wget-download-link.done >> /www/profile/wget/wget-download-link.complete
+echo "" > /www/profile/wget/wget-download-link.txt
+if [[ ! -z $phonenumber ]]; then
+	#name=`grep "Saving to: " /www/profile/wget.log | sed "s/Saving to: //g; s/'//g" | sed 's~[^[:alnum:]/]\+~~g'`
+	name=`grep "Saving to: " /www/profile/wget.log | tail -n 1 | sed "s/Saving to: //g; s/'//g" | sed 's/[!@#\$%^&*(|)]//g; s/\[//g; s/\]//g' | head -c 100`
+	
+	if [ "$status" = "0" ]; then
+		sukses=`tail -n 1 /www/profile/wget.log`
+		echo "Mengirim SMS notifikasi ke nomer: $phonenumber, mohon tunggu..." >>/www/profile/wget.log
+		gsm sms send $phonenumber "Download berhasil.\File: $name\ $sukses" | grep "OK, sms sukses terkirim ke"
+		if [ "$?" = "0" ]; then
+			echo "SMS notifikasi sukses dikirim" >> /www/profile/wget.log				
+		else
+			echo "SMS notifikasi gagal dikirim" >> /www/profile/wget.log
+		fi
+	else
+		keterangan=`tail -n 1 /www/profile/wget.log | sed 's/\.//g; s/   //g'`
+		gsm sms send $phonenumber "Download berhenti.\File: $name \Keterangan: $keterangan" | grep "OK, sms sukses terkirim ke"
+		if [ "$?" = "0" ]; then
+			echo "SMS notifikasi sukses dikirim" >> /www/profile/wget.log				
+		else
+			echo "SMS notifikasi gagal dikirim" >> /www/profile/wget.log
+		fi
+	fi
+fi 

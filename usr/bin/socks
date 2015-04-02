@@ -1,0 +1,153 @@
+#!/usr/bin/python
+
+import socket,select,time
+fo=open('/root/config','r')
+for line in fo:
+  if line.find('#')==0:
+    line='' 
+  else:
+    if line.find('server')<>-1:
+         server=line.split("'")[1]
+    if line.find('profile')==0:
+         profile=line.split("'")[1]
+         profile='/root/profiles/'+profile
+fo.close()
+fo=open(profile)
+for line in fo:
+  if line.find('#')==0:
+    line='' 
+  else:
+    if line.find('proxy_ip')<>-1:
+         proxy_ip=line.split("'")[1]
+         proxy_ip=proxy_ip.replace('^server^',server,1)
+    if line.find('proxy_port')==0:
+         proxy_port=line.split("'")[1]
+    if line.find('payload_inject')==0:
+         payload=line.split("'")[1]
+         payload=payload.replace('^server^',server,3)
+         payload=payload.replace('#10','\n')
+         payload=payload.replace('#13','\r')
+fo.close()
+print 'proxy:'+proxy_ip+':'+proxy_port
+print 'inject version 09/09/14'
+forward_to=(proxy_ip,int(proxy_port))
+listen=3339
+buffer_size = 2048
+
+class Forward:
+    def __init__(self):
+        self.forward = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    def start(self, host, port):
+        try:
+            self.forward.connect((host, port))
+            return self.forward
+        except Exception, e:
+            print e
+            return False
+
+class TheServer:
+    input_list = []
+    channel = {}
+    channel_ = {}
+    request = {}
+
+    def __init__(self, host, port):
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.bind((host, port))
+        self.server.listen(200)
+
+    def main_loop(self):
+        self.input_list.append(self.server)
+        while 1:
+            ss = select.select
+            inputready, outputready, exceptready = ss(self.input_list, [], [])
+            for self.s in inputready:
+                if self.s == self.server:
+                    self.on_accept()
+                    break
+                try:
+                    self.netdata = self.s.recv(buffer_size)
+                except Exception, e:
+                    self.netdata =''
+                if len(self.netdata) == 0:
+                    self.on_close()
+                else:
+                    if cmp(self.channel[self.s],self.channel_[self.s]):
+                        self.on_outbounddata()
+                    else:
+                        self.on_execute()
+
+    def on_accept(self):
+        forward = Forward().start(forward_to[0], forward_to[1])
+        clientsock, clientaddr = self.server.accept()
+        if forward:
+            self.input_list.append(clientsock)
+            self.input_list.append(forward)
+            self.channel[clientsock] = forward
+            self.channel[forward] = clientsock
+            self.channel_[clientsock] = forward
+            self.channel_[forward] = forward
+        else:
+            print "Proxy ",forward_to," tidak merespon",
+            print "Closing connection with client side", clientaddr
+            clientsock.close()
+
+    def on_close(self):
+        self.input_list.remove(self.s)
+        self.input_list.remove(self.channel[self.s])
+        out = self.channel[self.s]
+        self.channel[out].close()  
+        self.channel_[out].close() 
+        self.channel[self.s].close()
+        self.channel_[self.s].close()
+        del self.channel[out]
+        del self.channel_[out]
+        del self.channel[self.s]
+        del self.channel_[self.s]
+
+        
+
+    def on_execute(self):
+        netdata = self.netdata
+#-----------------------------------------------------------
+        if netdata.find("CONNECT") ==0:
+            req=netdata.split('HTTP')[0]
+            payloads=payload           
+            payloads=payloads.replace('^request^',req)
+            if payloads.find('|')<>-1:
+                 pay=payloads.split('|')                  
+                 self.request[self.channel[self.s]]=pay[1];
+                 netdata=pay[0]
+            else:
+                 netdata=payloads
+            print netdata
+        try:
+            self.channel[self.s].send(netdata)
+        except Exception, e:
+            print e            
+#-----------------------------------------------------------
+    def on_outbounddata(self):
+        netdata = self.netdata
+        if netdata.find('HTTP/1.') ==0:
+            if payload.find('|')<>-1:
+                if self.request[self.s] != '':
+                    time.sleep(0.5)                
+                    print self.request[self.s]
+                    self.channel_[self.s].send(self.request[self.s])
+                    self.request[self.s]=''
+            netdata='HTTP/1.1 200 Connection established\r\n\r\n'
+        try:
+            self.channel[self.s].send(netdata)
+        except Exception, e:
+            print e
+            
+#-----------------------------------------------------------
+       
+if __name__ == '__main__':
+    server = TheServer('0.0.0.0', listen)
+    try:
+        server.main_loop()
+    except KeyboardInterrupt:
+        print "Ctrl C - Stopping server"

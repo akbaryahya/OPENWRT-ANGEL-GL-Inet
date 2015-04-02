@@ -1,0 +1,454 @@
+#!/bin/sh
+
+case $1 in
+"stop")
+    pid=$(ps |grep -w socks |grep -v grep |awk -F" " '{print $1}')
+    if [ $pid ];then
+        killall -9 socks
+    fi
+    pid=$(ps |grep -w openvpn |grep -v grep |awk -F" " '{print $1}')
+    if [ $pid ];then
+        killall -9 openvpn
+    fi
+    killall -9 vpn
+    exit 0
+;;
+"server")
+    if [ $2 ];then
+        if [ $2 == 'show' ];then
+        grep "server " /root/config |awk -F"'" '{print $2}'
+        exit 0
+        fi
+        profile=`grep "profile " /root/config |grep -v source_update |awk -F"'" '{print $2}'`
+        use_config=`grep "use_config " /root/config|awk -F"'" '{print $2}'`
+        file_config=`grep "file_config " /root/config|awk -F"'" '{print $2}'`
+        source_update=`grep source_update /root/config|awk -F"'" '{print $2}'`
+        echo "profile '$profile'" > /root/config
+        echo "server '$2'" >> /root/config
+        echo "source_update '$source_update'" >> /root/config
+        echo "file_config '$file_config'" >> /root/config
+        echo "use_config '$use_config'" >> /root/config
+        echo "update file_config sukses.."
+    else
+       echo "perintah yang tersedia:" 
+       echo "vpn server [ip-server]       set server baru" 
+       echo "vpn server show              server sekarang"
+    fi
+;;
+"file-config") 
+    if [ $2 ];then
+        profile=`grep "profile " /root/config |grep -v source_update |awk -F"'" '{print $2}'`
+        use_config=`grep "use_config " /root/config|awk -F"'" '{print $2}'`
+        source_update=`grep source_update /root/config|awk -F"'" '{print $2}'`
+        server=`grep server /root/config|awk -F"'" '{print $2}'`
+        echo "profile '$profile'" > /root/config
+        echo "server '$server'" >> /root/config
+        echo "source_update '$source_update'" >> /root/config
+        echo "file_config '$2'" >> /root/config
+        echo "use_config '$use_config'" >> /root/config
+        echo "update file_config sukses.."
+    else
+       echo "perintah yang tersedia:" 
+       echo "vpn file-config [nama file]"
+    fi
+;;
+"use-config")
+    if [ $2 ];then
+        profile=`grep "profile " /root/config |grep -v source_update|awk -F"'" '{print $2}'`
+        file_config=`grep "file_config " /root/config|awk -F"'" '{print $2}'`
+        source_update=`grep source_update /root/config|awk -F"'" '{print $2}'`
+        server=`grep server /root/config|awk -F"'" '{print $2}'`
+        echo "profile '$profile'" > /root/config
+        echo "server '$server'" >> /root/config
+        echo "source_update '$source_update'" >> /root/config
+        echo "file_config '$file_config'" >> /root/config
+        echo "use_config '$2'" >> /root/config
+        echo "update file_config sukses.."
+    else
+       echo "perintah yang tersedia:" 
+       echo "vpn file-config [nama file]"
+    fi
+;;
+
+"server-show")
+        grep "server " /root/config |awk -F"'" '{print $2}'
+;;
+"config-show")
+        grep "file_config " /root/config |awk -F"'" '{print $2}'
+;;
+
+"user-show")
+               a=0
+              while read line
+              do
+                 if [ $a == 0 ]; then
+                 echo $line
+                 fi
+                 let a=a+1
+              done < /root/user.txt
+
+;;
+"user-pass")
+    if [ $2 ];then
+       echo $2 > /root/user.txt
+       echo $3 >> /root/user.txt
+    else
+       echo "perintah yang tersedia:"
+       echo "vpn userpass [namauser] [password]"
+    fi
+;;
+"pass-show")
+               a=0
+              while read line
+              do
+                 if [ $a == 1 ]; then
+                 echo $line
+                 fi
+                 let a=a+1
+              done < /root/user.txt
+
+;;
+
+"start")
+jum=`ps |grep -w vpn |grep -v grep -c`
+if [ $jum -eq 3 ];then
+   echo "scrypt vpn sudah jalan.. terminated"
+   exit 1 
+fi
+waktu=`eval date +%Y-%m-%d-%H:%M:%S`
+profile=`grep "profile " /root/config |grep -v source |awk -F"'" '{print $2}'`
+use_config=`grep "use_config " /root/config |awk -F"'" '{print $2}'`
+file_config=`grep "file_config " /root/config |awk -F"'" '{print $2}'`
+echo " "
+if [ $use_config ];then
+    if [ $use_config == 'yes' ];then
+        echo "$waktu Config openvpn : $file_config" >> /www/profile/vpn.log
+        echo "Config openvpn : $file_config"
+    else
+        echo "$waktu Config openvpn : default" >> /www/profile/vpn.log 
+        echo "Config openvpn : default" 
+    fi
+fi
+server=`grep server /root/config |awk -F"'" '{print $2}'`
+pf=$profile
+profile="/root/profiles/$profile"
+proxy=`grep proxy_ip $profile |awk -F"'" '{print $2}'` 
+if [ $proxy ];then
+   if [ $proxy == '^server^' ];then
+       proxy=$server
+   fi
+fi
+port=`grep proxy_port $profile |awk -F"'" '{print $2}'`
+enable_iprule=`grep enable_iprule $profile |awk -F"'" '{print $2}'`
+fail_reconnect=`grep fail_reconnect $profile |awk -F"'" '{print $2}'`
+ip_rule=`grep ip_rule $profile |awk -F"'" '{print $2}'`
+kodok=`grep auto_kodok $profile |awk -F"'" '{print $2}'`
+use_vpn=`grep use_vpn $profile |awk -F"'" '{print $2}'`
+use_inject=`grep use_inject $profile |awk -F"'" '{print $2}'`
+payload=`grep payload_inject $profile |awk -F"'" '{print $2}'|awk -F" " '{print $1}'`
+IFACE=$(grep IFACE /etc/config/gsm |awk -F"'" '{print $2}')
+apn=$(grep apn_modem $profile |awk -F"'" '{print $2}')
+echo "$waktu Apn modem : $apn" >> /www/profile/dial.log
+echo "Apn modem : $apn"
+if [ $enable_iprule ];then
+if [ $enable_iprule == 'yes' ];then
+   echo "$waktu IP hunter Aktif.." >> /www/profile/dial.log 
+   echo "IP hunter Aktif.."
+   echo "$waktu IP rule : $ip_rule" >> /www/profile/dial.log
+   echo "IP rule : $ip_rule"
+else
+   echo "$waktu IP hunter tidak Aktif.." >> /www/profile/dial.log 
+   echo "IP hunter tidak Aktif.."
+fi 
+fi
+if [ $kodok ];then
+    if [ $kodok == 'yes' ];then
+         uci set network.$IFACE.service=gprs_only
+         rat=$(gsm info |grep Rat |awk -F" " '{print $2}')
+         if [ $rat != 'EDGE' ];then
+             echo "mode kodok aktif jump ke edge... "             
+             echo "$waktu auto kodok : aktif " >> /www/profile/dial.log
+             gsm jump edge > /dev/null
+             sleep 10
+         fi
+    else
+         echo "$waktu auto kodok : tidak aktif" >> /www/profile/dial.log
+         echo "Auto kodok : tidak aktif"
+         uci set network.$IFACE.service=umts_only
+    fi
+else
+    echo "$waktu auto kodok : tidak aktif" >> /www/profile/dial.log
+    echo "Auto kodok : tidak aktif"
+    uci set network.$IFACE.service=umts_only
+fi
+if [ $use_inject ];then
+ if [ $use_inject == 'yes' ];then
+    if [ $payload ];then
+        echo "$waktu Mode inject : aktif" >> /www/profile/dial.log
+        echo "Mode inject : aktif"
+        uci set network.$IFACE.defaultroute='0' > /dev/nul
+    else
+        echo "$waktu Mode inject : tdk aktif" >> /www/profile/dial.log
+        echo "Mode inject : tdk aktif"
+        uci set network.$IFACE.defaultroute='1' > /dev/nul
+    fi
+ else
+   echo "$waktu Mode inject : tdk aktif" >> /www/profile/dial.log
+   echo "Mode inject : tdk aktif"
+   uci set network.$IFACE.defaultroute='1' > /dev/nul
+ fi
+else
+   echo "$waktu Mode inject : aktif" >> /www/profile/dial.log
+   echo "Mode inject : tdk aktif"
+   uci set network.$IFACE.defaultroute='1' > /dev/nul
+fi
+uci set network.$IFACE.apn=$apn
+uci commit network
+echo "$waktu mencoba dial interface : $IFACE..." >> /www/profile/dial.log
+echo "Mencoba dial interface : $IFACE..."
+ifup $IFACE
+sleep 2
+ipmodem=0
+routeok=0
+c=0
+timeout=0
+delay=1
+while [ 1 ]
+do
+   let c=c+1
+   waktu=`eval date +%Y-%m-%d-%H:%M:%S`
+   ip=`ifconfig |grep P-t-P:10.64.64.64 |awk -F':' '{print $2}' |awk -F" " '{print $1}'`
+   if [ $ip ];then
+       cocok=0 
+       ipfailcount=0
+       if [ $enable_iprule ];then
+           if [ $enable_iprule == 'yes' ];then
+              for rule in $ip_rule
+              do
+                 len=`expr length $rule`
+                 ipc=${ip:0:$len}
+                 #echo "$ipc  $rule"
+                 if [ $rule == $ipc ];then
+                     cocok=1
+                 fi
+              done               
+              if [ $cocok -eq 0 ];then
+                  echo "$waktu ip not match IP $ip <> rule $ip_rule " >> /www/profile/dial.log
+                  echo "$waktu reconnecting modem... " >> /www/profile/dial.log
+                  echo "ip not match : rule $ip_rule <> $ip "
+                  ifdown $IFACE
+                  ifup $IFACE
+              fi
+           else
+              cocok=1
+           fi  
+       else
+          cocok=1 
+       fi
+       if [ $cocok -eq 1 ];then
+          if [ $routeok -eq 0 ];then
+          ifconfig |grep tun0 > /dev/null
+          if [ $? == 0 ];then
+              ipv=$(ifconfig tun0 |grep inet |awk -F":" '{print $3}' |awk -F" " '{print $1}')
+              if [ $ipv ];then
+                  route -e |grep default|grep $ipv > /dev/null
+                  if [ $? == 1 ];then
+                       echo "route add default gw $ipv"
+                       route add default gw $ipv  
+                       routeok=1
+                  else
+                       routeok=1
+                  fi
+              fi 
+          fi
+          fi
+          if [ $ipmodem -eq 0 ];then
+             echo "ip modem OK.. ip:$ip"
+             if [ $kodok ];then
+                if [ $kodok == 'yes' ];then
+                    rat=$(gsm info |grep Rat |awk -F" " '{print $2}')
+                    if [ $rat == 'EDGE' ];then
+                       gsm jump 3g > /dev/null
+                       sleep 3
+                       echo "$mode kodok aktif, jump ke 3g.. "
+                       echo "$waktu mode kodok aktif, jump ke 3g.. " >> /www/profile/dial.log
+                    fi
+                fi
+             fi
+             ipmodem=1
+             timeout=0
+             delay=5
+             echo "$waktu ip modem $ip OK..." >> /www/profile/dial.log
+             if [ $use_inject ];then
+             if [ $use_inject == 'yes' ];then
+               if [ $payload ];then
+                  route -e |grep $proxy |grep $ip > /dev/nul
+                  if [ $? == 1 ];then                
+                    route add $proxy gateway $ip
+                    echo "$waktu route add $proxy gateway $ip " >> /www/profile/dial.log
+                  fi 
+                  ps |grep socks |grep -v grep > /dev/nul
+                  if [ $? == 1 ];then            
+                     echo "$waktu starting inject.. " >> /www/profile/dial.log
+                     socks &
+                  fi
+               else
+                  echo "$waktu config inject error.. payload kosong.." >> /www/profile/dial.log 
+               fi
+             fi
+             fi
+             if [ $use_vpn ];then
+                if [ $use_vpn == 'yes' ];then
+                echo "$waktu starting openvpn.. " >> /www/profile/dial.log
+                ps |grep openvpn |grep -v grep > /dev/nul
+                if [ $? == 1 ];then
+                  if [ $use_config == 'yes' ];then
+                     rm -f /root/crt/client.conf
+                     cp -f /root/crt/$file_config /root/crt/client.conf
+                     echo " " >> /root/crt/client.conf
+                     echo "log /www/profile/vpn.log" >> /root/crt/client.conf
+                     if [ $payload ];then
+                          echo "http-proxy 127.0.0.1 3339" >> /root/crt/client.conf
+                          echo "http-proxy-retry infinite" >> /root/crt/client.conf
+                          echo "http-proxy-timeout 20" >> /root/crt/client.conf
+                     else
+                         if [ $proxy ];then
+                              echo "http-proxy $proxy $port" >> /root/crt/client.conf
+                              echo "http-proxy-retry infinite" >> /root/crt/client.conf
+                              echo "http-proxy-timeout 20" >> /root/crt/client.conf
+                         fi
+                     fi
+                     cd /root/crt
+                     openvpn /root/crt/client.conf &
+                  else            
+                    if [ $payload ];then
+                        remote=`grep "remote " /etc/openvpn/client.conf`
+                        server=`grep "server " /root/config |awk -F"'" '{print $2}'`
+                        server="remote $server 443"
+                        sed -i -e "s/$remote/$server/g" /etc/openvpn/client.conf
+                        openvpn /etc/openvpn/client.conf &
+                    else
+                        if [ $proxy ];then
+                           remote=`grep "remote " /etc/openvpn/client2.conf`
+                           server=`grep "server " /root/config |awk -F"'" '{print $2}'`
+                           server="remote $server 443"
+                           sed -i -e "s/$remote/$server/g" /etc/openvpn/client2.conf
+                           rm -f /etc/openvpn/client3.conf
+                           cp -f /etc/openvpn/client2.conf /etc/openvpn/client3.conf
+                           echo "http-proxy $proxy $port" >> /etc/openvpn/client3.conf
+                           echo "http-proxy-retry infinite" >> /etc/openvpn/client3.conf
+                           echo "http-proxy-timeout 20" >> /etc/openvpn/client3.conf
+                           openvpn /etc/openvpn/client3.conf &
+                        else     
+                           remote=`grep "remote " /etc/openvpn/client2.conf`
+                           server=`grep "server " /root/config |awk -F"'" '{print $2}'`
+                           server="remote $server 443"
+                           sed -i -e "s/$remote/$server/g" /etc/openvpn/client2.conf
+                           openvpn /etc/openvpn/client2.conf &
+                        fi
+                    fi
+                  fi
+                fi
+             fi 
+          fi  
+       fi
+     fi
+   else
+      if [ $ipmodem -eq 1 ];then
+         echo "$waktu vpn: IP Modem tidak terdeteksi, timeout = $ipfailcount" >> /www/profile/dial.log
+         echo "IP Modem tidak terdeteksi, timeout = $ipfailcount"
+         ipmodem=0
+         routeok=0
+      fi
+      delay=1
+      let ipfailcount=$ipfailcount+1
+      if [ $kodok ];then
+         if [ $kodok == 'yes' ];then
+             rat=$(gsm info |grep Rat |awk -F" " '{print $2}')
+             if [ $rat != 'EDGE' ];then
+                gsm jump edge > /dev/null
+                sleep 10
+                echo "$mode kodok aktif jump ke edge... "
+                echo "$waktu mode kodok aktif jump ke edge... " >> /www/profile/dial.log
+                ifup $IFACE
+             fi
+         fi
+      fi
+      if [ $ipfailcount -eq 9 ];then
+         echo "$waktu vpn: IP Modem tidak terdeteksi, timeout = $ipfailcount" >> /www/profile/dial.log
+         echo "IP Modem tidak terdeteksi, timeout = $ipfailcount"
+          echo "$waktu connecting modem..." >> /www/profile/dial.log
+          ifdown $IFACE
+          ifup $IFACE
+      fi  
+      if [ $ipfailcount -eq 25 ];then
+          echo "$waktu vpn: IP Modem tidak terdeteksi, timeout = $ipfailcount" >> /www/profile/dial.log
+          echo "IP Modem tidak terdeteksi, timeout = $ipfailcount"
+          echo "$waktu connecting modem..." >> /www/profile/dial.log
+          ifdown $IFACE
+          ifup $IFACE
+      fi  
+      if [ $ipfailcount -eq 45 ];then
+          echo "$waktu vpn: IP Modem tidak terdeteksi, timeout = $ipfailcount" >> /www/profile/dial.log
+          echo "IP Modem tidak terdeteksi, timeout = $ipfailcount"
+          echo "$waktu connecting modem..." >> /www/profile/dial.log
+          ifdown $IFACE
+          ifup $IFACE
+      fi  
+#      if [ $ipfailcount -gt 150 ];then
+#          jika lebih dari 2 menit tidak muncul ip modem maka ruter akan di reboot
+#          reboot
+#          exit 1
+#     fi       
+      ps |grep openvpn |grep -v grep > /dev/nul
+      if [ $? == 0 ];then            
+         echo "$waktu vpn: stop openvpn" >> /www/profile/dial.log         
+         killall -9 openvpn
+      fi
+      ps |grep socks |grep -v grep > /dev/nul
+      if [ $? == 0 ];then            
+         echo "$waktu vpn: stop inject" >> /www/profile/dial.log         
+         killall -9 socks
+      fi
+   fi
+ sleep $delay
+
+done
+;;
+"version")
+   if [ $2 ];then 
+   if [ $2 == 'update' ];then
+       source_update=`grep source_update /root/config |awk -F"'" '{print $2}'`      
+       cd /tmp
+       rm -f profile
+       wget $source_update/bin/vpn
+       if [ $? == 0 ];then 
+           echo -n "versi scrypt vpn saat ini: "
+           sh vpn version
+           echo "versi scrypt vpn anda: 03/09/14"
+           rm -f vpn
+       fi 
+   else
+     echo "perintah yang tersedia:"
+     echo "profile version update     info versi vpn yang tersedia saat ini" 
+   fi
+   else 
+      echo "13/10/14"
+   fi
+
+;;
+
+*)
+  echo "perintah yang tersedia:"
+  echo "vpn version                     info versi scrypt vpn anda"
+  echo "vpn version update              info versi scrypt vpn yang tersedia sekarang"
+  echo "vpn start                       start openvpn + inject"
+  echo "vpn stop                        stop openvpn + inject"
+  echo "vpn user-pass [user] [pass]     user password openvpn"
+  echo "vpn server [ip]                 server openvpn"
+  echo "vpn server-show                 info ip server vpn"
+  echo "vpn update                      update scrypt vpn"  
+  echo "vpn user-show                   tampilkan user"
+  echo "vpn pass-show                   tampilkan password"
+;;
+esac

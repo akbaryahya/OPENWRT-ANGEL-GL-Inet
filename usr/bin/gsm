@@ -1,0 +1,855 @@
+#!/usr/bin/python
+
+import serial,time
+from os import popen
+TYPE=''
+DEV=''
+IFACE=''
+ser=serial.Serial()
+try:
+              fo=open('/etc/config/gsm','r')
+              for line in fo:
+                  if line.find("DEV")<>-1:
+                       DEV=line.split("'")[1]    
+                  if line.find("IFACE")<>-1:
+                       IFACE=line.split("'")[1]  
+              fo.close()
+except Exception, e:
+              fo=open('/etc/config/gsm','w+')
+              fo.write("DEV 'ttyUSB2'\n")
+              fo.write("IFACE '3g'")
+              fo.close()
+              DEV='ttyUSB2'
+def init():
+          res=popen('ls /dev |grep '+DEV).read()
+          if res:
+               if argv[1]<>'status':
+                   print "gsm versi 1.4 by mikodemos\n"
+          else:
+               print "Error, Device ",DEV," tidak di temukan"
+               exit()
+          ser.port = "/dev/"+DEV
+          ser.baudrate = 115200
+          ser.bytesize = serial.EIGHTBITS 
+          ser.parity = serial.PARITY_NONE 
+          ser.stopbits = serial.STOPBITS_ONE
+          ser.timeout = 1
+
+def ser_connect():
+   try: 
+       ser.open()
+       out="OK"
+   except Exception, e:
+       print "error open serial port: " + str(e)
+       out="ERROR"
+       exit()
+   return out
+
+def send_at_wait(command,ref,timeout):
+    resp=ser_connect()
+    if resp=="OK":
+       ser.flushInput()
+       ser.write(command)
+       data=''
+       for i in range(0,timeout):
+          data=ser.read(1)
+          n = ser.inWaiting()
+          if n:
+             data = data + ser.read(n)
+          if data.find(ref)<>-1:
+             return data
+             break
+       ser.close()
+       if data.find(ref)==-1:
+           return "TIMEOUT"
+           print data
+    else:
+       return "ERROR"
+
+def send_at(command,timeout):
+    resp=ser_connect()
+    if resp=="OK":
+       ser.flushInput()
+       ser.write(command)
+       data=''
+       for i in range(0,timeout):
+          data=ser.read(1)
+          n = ser.inWaiting()
+          if n:
+             data = data + ser.read(n)
+       ser.close()
+       return data
+    else:
+       return "ERROR"
+
+
+def get_qos_from_log(timeout):
+    resp=ser_connect()
+    if resp=="OK":
+       ser.flushInput()
+       data=''
+       for i in range(0,timeout):
+          data=ser.read(1)
+          n = ser.inWaiting()
+          if n:
+             data = data + ser.read(n)
+          if data.find("^DSFLOWRPT")<>-1:
+             h=data.split(',')
+             if len(h)==7:
+                qu=h[5]
+                a=int("0x"+qu,0)/125
+                data=str(a)
+                qu=h[6]
+                a=int("0x"+qu,0)/125
+                data=data+' '+str(a)
+             return data
+             break
+          
+       ser.close()
+    return '- -'
+
+def send_ussd(type):
+  if type=="-e":
+          resp=send_at_wait('AT+CUSD=2\r','OK',2)
+          if resp.find("TIMEOUT")<>-1:
+               return "ERROR, tidak ada sesi untuk di batalkan"
+          else:
+               return "OK, sesi USSD berhasil dibatalkan"
+  else:   
+     resp=send_at_wait('AT+CUSD=1,"'+type+'",15\r',"+CUSD:",10)
+     if resp=="TIMEOUT":
+          return "ERROR, Time Out (tidak ada respon dari Provider)"
+
+     else:
+          resp=resp.split('"')
+          if len(resp)>1:
+              return resp[1]
+          else:
+              return "Input tidak valid" 
+ 
+def get_merk():
+       resp=send_at_wait("ATI\r","OK",4)
+       ret="GENERIC"
+       retm="UNKNOW"
+       if resp<>"TIMEOUT":
+           resp=resp.split('\n')
+           for ln in resp:
+               ln=ln.upper()
+               if ln.find("MANUFACTUR")<>-1: 
+                   if ln.find("HUA")<>-1:
+                       ret ="HUAWEI"
+                   elif ln.find("ZTE")<>-1:
+                       ret ="ZTE"
+                   elif ln.find("OPT")<>-1:
+                       ret= "OPTION"
+                   elif ln.find("SIER")<>-1:
+                       ret ="SIERRA"
+               if ln.find("MODEL")<>-1:
+                   retm=ln.split(' ')[1].split('\n')[0]
+       return ret+" "+retm 
+def del_space(text):
+     res=''
+     for ch in text: 
+         if ch<>' ':
+             res=res+ch
+     return res
+
+def get_network():
+     resp=send_at_wait('AT+COPS=?\r','OK',50)
+     resp=resp.split('(')
+     for line in resp:
+         if line.find('"')<>-1:
+             mode=line.split(',')[0]
+             name=line.split(',')[2]
+             kode=line.split(',')[3]
+             name=name[1:]
+             name=name[:len(name)-1]
+             while len(name)<13:
+                  name=name+' '
+             kode=kode[1:]
+             kode=kode[:len(kode)-1]
+             print name+' :  '+mode+','+kode
+     return resp
+
+def set_network(param):
+     if param=="auto":
+          resp=send_at_wait('AT+COPS=0\r','OK',10)
+     else:
+          resp=send_at_wait('AT+COPS=1,'+param+'\r','OK',10)
+          #resp='AT+COPS=1,'+param+'\r'
+
+     return resp 
+
+def get_rssi():
+     resp=send_at_wait('AT+CSQ\r','+CSQ:',3)
+     if resp<>'TIMEOUT':                  
+         CSQ= get_value(resp,'+CSQ:')
+         CSQ= CSQ.split(':')[1].split(',')[0]
+         csq=int(del_space(CSQ))
+         if (csq >0 and csq <31):
+              rssi= 2 * csq -113
+              return str(rssi)
+
+def get_operator():   
+  ID_OPSEL=('51011:XL-Axiata','51010:Telkomsel','51089:Three','51001:Indosat','51008:Axis')
+  if TYPE=="ZTE":
+     resp=send_at_wait('AT+COPS?','+COPS:',3)
+     if resp<>"TIMEOUT":
+          resp=get_value(resp,'+COPS:')
+          return resp.spilt('"')[1]
+  else:    
+     resp= send_at_wait("AT+COPS=3,2; +COPS?\r","+COPS:",3)
+     if resp<>"TIMEOUT":
+          resp=get_value(resp,'+COPS:')
+          resp=resp.split(',')
+          if len(resp)>2: 
+             resp=resp[2].replace('"','')
+             for ln in ID_OPSEL:
+                 if ln.find(resp)<>-1:
+                     return ln.split(':')[1]
+          else:
+              return "Not Registered"
+def del_non_angka(str):
+      res=''
+      for ch in str:
+          if (ch>='0' and ch<='9'):
+               res=res+ch
+      return res
+
+def del_non_text(str):
+      res=''
+      for ch in str:
+          if (ch>chr(32) and ch<chr(173)):
+               res=res+ch
+      return res
+
+
+def get_mode():
+     if TYPE=="HUAWEI":
+         resp=send_at_wait('AT^SYSINFO\r','OK',3)
+         if resp<>"TIMEOUT":
+             resp=get_value(resp,'^SYSINFO:') 
+             resp=resp.split(',')[6]
+             resp=del_non_angka(resp)
+             if resp=='17':
+                  return "HSPA+ (64QAM)"
+             elif resp=='18':
+                  return "HSPA+ (MIMO)"
+             elif resp=='1':
+                  return "GSM"
+             elif resp=='2':
+                  return "GPRS"
+             elif resp=='3':
+                  return "EDGE"
+             elif resp=='4':
+                  return "UMTS"
+             elif resp=='5':
+                  return "HSDPA"
+             elif resp=='6':
+                  return "HSUPA"
+             elif resp=='7':
+                  return "HSPA"
+             elif resp=='9':
+                  return "HSPA+"
+             else:
+                  return "-"
+def get_qos():
+     up="-"
+     down="-"
+     resp=send_at_wait("AT+CGEQNEG=1\r","+CGEQNEG:",2)
+     if resp<>"TIMEOUT":
+          resp=get_value(resp,"+CGEQNEG:")
+          resp=resp.split(',')
+          if len(resp)>4:
+               up=resp[2]
+               down=resp[3] 
+     return up+" "+down 
+
+def get_cellid():
+     resp=send_at_wait("AT+CREG=2; +CREG?\r","+CREG:",3)
+     if resp<>"TIMEOUT":
+          resp=get_value(resp,"+CREG:")
+          resp=resp.split(',')
+          if len(resp)>3:
+               resp=del_non_text(resp[3])
+               while len(resp)>4:
+                   resp=resp[1:]
+               return str(int("0x"+resp,0))
+
+def jump(mode):
+     if  TYPE=="HUAWEI":
+          if mode=='edge':
+              resp=send_at_wait("AT^SYSCFG=13,1,3FFFFFFF,2,4\r","OK",4)
+              if resp<>"TIMEOUT":
+                   return "OK"
+          elif mode=='3g':
+              resp=send_at_wait("AT^SYSCFG=14,2,3FFFFFFF,2,4\r","OK",4)
+              if resp<>"TIMEOUT":
+                   return "OK"
+     return "ERROR"
+                
+def get_value(text,ref):
+     str=text.split('\n')
+     for ln in str:
+         if ln.find(ref)<>-1:
+             return ln
+
+def get_ip():
+     ip="-"
+     resp=popen('ifconfig').read()
+     resp=resp.split('\n')           
+     i=0
+     for line in resp:
+         if line.find('3g-'+IFACE)<>-1:
+              str=resp[i+1]
+              ip= str.split(':')[1].split(' ')[0]
+         i=i+1                     
+     return ip
+def get_apn():
+     resp=popen('uci get network.'+IFACE+'.apn').read()
+     return resp.split('\n')[0]
+
+def set_apn(apn):
+     popen('uci set network.'+IFACE+'.apn='+apn)
+     popen('uci commit network')
+
+def set_mode(apn):
+     if apn=='gprs':
+         mode="gprs_only"
+     elif apn=='umts':
+         mode="umts_only"
+     elif apn=="umts-gprs":
+         mode="umts"  
+     popen('uci set network.'+IFACE+'.service="'+mode+'"')
+     popen('uci commit network') 
+
+def istext(text):
+     r=False
+     for ch in text: 
+         if (ch<chr(32) or ch>chr(173)):
+             return False
+             break        
+     return True
+
+def get_sms_list():
+     list=[0] 
+     resp=send_at_wait("AT+CMGD=?\r","+CMGD:",3)
+     if resp<>"TIMEOUT":
+          resp=get_value(resp,"+CMGD:")
+          resp=resp.split(')')[0].split(',')
+          i=0
+          for ln in resp:
+              ln=del_non_angka(ln)
+              if ln<>'':
+                   list.append(ln)
+                   i=i+1
+                   list[0]=i
+          return list
+def get_sms_center():
+     resp=send_at_wait("AT+CSCA?\r","+CSCA:",3)
+     if resp<>"TIMEOUT":
+          resp=get_value(resp,"+CSCA:")
+          return resp.split('"')[1]
+
+def set_sms_center(text):
+     if text[0]=='+':
+          mode='145'
+     else:
+          mode='129'
+     resp=send_at_wait('AT+CSCA="'+text+'",'+mode+'\r',"+CSCA:",3)
+     if resp<>"TIMEOUT":
+          return "ERROR"
+     else:
+          return "OK"  
+def main_info():
+     print "perintah yang tersedia:"
+     print "ussd     mengirim USSD"
+     print "sms      megirim,membaca,menghapus SMS"
+     print "set      seting port,interface,apn,mode jaringan"
+     print "show     show seting"
+     print "info     info nama opsel,signal,rat,qos dll"
+     print "jump     lompat jaringan"
+     print "dial     konek internet"
+     print "hangup   diskonek internet"
+     exit()
+
+def print_sms(text):
+   resp=text.split('"')    
+   if len(resp)==7:
+      index=del_non_angka(resp[0].split(',')[0])
+      sender=u""+resp[3]
+      f=''
+      if sender.isdecimal():
+          i=0
+          st='';
+          while i < len(sender):
+              st= sender[i:i+2]
+              f=f+ chr(int(st))
+              i=i+2
+          if istext(f):
+              print index,"sender: "+f
+          else:
+              print index,"sender: "+resp[3]
+      else:
+          print index,"sender: "+resp[3]
+      date=resp[5]
+      date=date[0:17]
+      print "date:  ",date
+      resp=resp[6].split("\n")
+      for ln in resp:
+         if ln.find("OK")<>0:
+             if len(ln)>0:
+                 if ln[0]<>'^':
+                      print ln 
+
+def send(command,str_wait,maxcount):
+    resp=ser_connect()
+    data=''
+    if resp=="OK":
+       ser.flushInput()
+       ser.write(command)
+       for i in range(0,maxcount):
+           data=data+ser.read(1)
+           if data.find(str_wait)<>-1:
+                return data
+                break
+       if data.find('str_wait')==-1:
+           return "TIMEOUT" 
+       else:
+           return data  
+def init_text_mode():
+     resp = send_at_wait("AT+CMGF=1\r","OK",4)
+     if resp=="TIMEOUT":
+           resp = send_at_wait("AT+CMGF=1\r","OK",4)
+           if resp=="TIMEOUT":
+                 return "ERROR"
+           else:
+              return "OK"
+     else:
+         return "OK"
+  
+if __name__=='__main__':
+    from sys import argv
+    if argv[1:]:
+       if argv[1]<>'set':
+           init()
+       else:
+           if argv[2:]:
+               if argv[2]=='smsc':
+                   init()
+    if argv[1:]:
+#JUMP----------------------------------------------------------------------------------------------        
+        if argv[1]=='jump':
+             if argv[2:]:
+                 if (argv[2]<>'edge' and argv[2]<>'3g'):
+                     print "perintah yang tersedia:"
+                     print "jump edge  atau  jump 3g"
+                     exit() 
+                 else:
+                     MODEM=get_merk()
+                     TYPE=MODEM.split(' ')[0]
+                     if jump(argv[2])=='OK':
+                        print "OK, jump ke jaringan",argv[2],"sukses"
+                        exit()                         
+                     else:
+                        time.sleep(2)
+                        if jump(argv[2])=='OK':
+                            print "OK, jump ke jaringan",argv[2],"sukses"
+                            exit()                         
+                        else:
+                           time.sleep(2)
+                           if jump(argv[2])=='OK':
+                              print "OK, jump ke jaringan",argv[2],"sukses"
+                              exit()                         
+                           else:
+                              time.sleep(2)
+                              if jump(argv[2])=='OK':
+                                 print "OK, jump ke jaringan",argv[2],"sukses"
+                                 exit()                         
+                              else:
+                                 time.sleep(2)
+                                 if jump(argv[2])=='OK':
+                                     print "OK, jump ke jaringan",argv[2],"sukses"
+                                     exit()                         
+                                 else:
+                                     print "ERROR, jump ke jaringan",argv[2],"gagal"
+                                     exit() 
+             else:
+                 print "perintah yang tersedia:"
+                 print "jump edge  atau  jump 3g"
+                 exit() 
+#SET----------------------------------------------------------------------------------------------
+        elif argv[1]=='set':
+             if argv[2:]:
+#APN------------------------------------------------------------------------------------------------
+                 if argv[2]=='apn':
+                    if argv[3:]:
+                        set_apn(argv[3])
+                        print "gsm versi 1.4 by mikodemos\n"
+                        print "set apn ",argv[3],"sukses"
+                    else:
+                       print "gsm versi 1.4 by mikodemos\n"
+                       print "perintah yang tersedia:"
+                       print "set apn [nama apn]   contoh: set apn internet"
+                       exit()
+#PORT---------------------------------------------------------------------------------------------
+                 elif argv[2]=="port":
+                    if argv[3:]:
+                        fo=open('/etc/config/gsm','w+')
+                        fo.write("DEV '"+argv[3]+"'\n")
+                        fo.write("IFACE '"+IFACE+"'\n")               
+                        fo.close()  
+                        print "gsm versi 1.4 by mikodemos\n"          
+                        print "OK, set port",argv[3]," sukses"
+                    else:
+                       print "gsm versi 1.4 by mikodemos\n"
+                       print "perintah yang tersedia:"
+                       print "set port [nama port]   contoh: set port ttyUSB2"
+                       exit()
+ 
+#SET-IFACE---------------------------------------------------------------------------------------------
+                 elif argv[2]=="interface":
+                    if argv[3:]:
+                       fo=open('/etc/config/gsm','w+')
+                       fo.write("DEV '"+DEV+"'\n")
+                       fo.write("IFACE '"+argv[3]+"'\n")               
+                       fo.close()  
+                       print "gsm versi 1.4 by mikodemos\n"          
+                       print "OK, set interface",argv[3],"sukses"
+                    else:
+                       print "gsm versi 1.4 by mikodemos\n"
+                       print "perintah yang tersedia:"
+                       print "set interface [nama nama interface]   contoh: set interface 3g"
+                       exit()
+#SET-MODE--------------------------------------------------------------------------------------------   
+                 elif argv[2]=='mode':
+                    if argv[3:]:
+                        if (argv[3]<>"gprs" and argv[3]<>"umts" and argv[3]<>"umts-gprs"):
+                             print "argument salah"
+                             exit()
+                        set_mode(argv[3])
+                        print "gsm versi 1.4 by mikodemos\n" 
+                        print "set mode ",argv[3],"sukses"
+                    else:
+                       print "gsm versi 1.4 by mikodemos\n"
+                       print "perintah yang tersedia:"
+                       print "set mode [gprs,umts,umts-gprs]   contoh: set mode gprs"
+                       exit()
+#SET-SMSC-------------------------------------------------------------------------------------------
+                 elif argv[2]=='smsc':
+                      if argv[3:]:
+                          if set_sms_center(argv[3])=="OK":
+                               print "OK, set sms center sukses"
+                          else:
+                               print "ERROR, set sms center gagal"
+                      else:
+                          print "perintah yang tersedia:"
+                          print "set smsc [number]    contoh set smsc +628100000" 
+
+                 elif argv[2]=='network':
+                      if argv[3:]:
+                          init()
+                          print set_network(argv[3])
+                      else:
+                          print "perintah yang tersedia:"
+                          print "set network [parameter]    contoh set network auto" 
+                          print "set network 2,51089"
+
+
+                 else:
+                     print "gsm versi 1.4 by mikodemos\n"
+                     print "perintah yang tersedia:"
+                     print "set apn"
+                     print "set port"
+                     print "set interface"
+                     print "set mode"
+                     print "set smsc"
+                     print "set network"
+                     exit()                  
+#END_SET---------------------------------------------------------------------------------------------
+             else:
+                print "gsm versi 1.4 by mikodemos\n"
+                print "perintah yang tersedia:"
+                print "set apn"
+                print "set port"
+                print "set interface"
+                print "set mode"
+                print "set smsc"  
+                print "set network"
+             exit()
+#DIAL-------------------------------------------------------------------------------------------------
+        if argv[1]=='dial':
+             print "dial interface "+IFACE
+             popen('ifup '+IFACE)         
+             exit()
+#HANGUP-------------------------------------------------------------------------------------------------
+        if argv[1]=='hangup':
+             print "hangup interface "+IFACE
+             popen('ifdown '+IFACE)         
+             exit()
+#INFO-------------------------------------------------------------------------------------------------
+        if argv[1]=="info":
+             MODEM=get_merk()
+             TYPE=MODEM.split(' ')[0]
+             if argv[2:]:
+            #QOS---------------------------------------------------------
+                 if argv[2]=="qos":
+                    qos=get_qos().split(" ")
+                    if qos[0]=='-':
+                        qos=get_qos_from_log(6).split(" ")          
+                    print "qos:"+qos[0]+":"+qos[1]
+                 elif argv[2]=="rat":
+                    r=get_mode()
+                    print "rat:"+str(r)
+                 else:
+                    print "perintah yang tersedia:"
+                    print "info qos"
+                    print "info rat" 
+           
+             else:                                
+                print "Modem:",MODEM
+                print "Operator:",get_operator()
+                print "Rssi:",get_rssi()
+                print "Rat:",get_mode()
+                print "Cell id:",get_cellid()
+                print "Apn:",get_apn()
+                ip=get_ip()
+                print "Ip addr:",ip
+                if ip<>"-": 
+                   qos=get_qos().split(" ")
+                   if qos[0]=='-':
+                      qos=get_qos_from_log(6).split(" ")            
+                   print "Qos up: "+qos[0]
+                   print "Qos down: "+qos[1]
+                else:
+                   print "Qos up: -"
+                   print "Qos down: -"
+             exit()     
+#STATUS----------------------------------------------------------------------------------------------
+        if argv[1]=='status':
+             MODEM=get_merk()
+             TYPE=MODEM.split(' ')[0]
+             print "STATUS MODEM"
+             print "================================"
+             print "Modem:",MODEM
+             print "Operator:",get_operator()
+             print "Rssi:",get_rssi(),"dBm"
+             print "Rat:",get_mode()
+             print "Cell id:",get_cellid()
+             ip=get_ip()
+             if ip<>"-": 
+                 qos=get_qos().split(" ")
+                 if qos[0]=='-':
+                    qos=get_qos_from_log(6).split(" ")          
+                 print "Qos up: "+qos[0]
+                 print "Qos down: "+qos[1]
+             else:
+                 print "Qos up: -"
+                 print "Qos down: -"
+             print "================================"
+             exit()     
+#USSD-------------------------------------------------------------------------------------------------
+        if argv[1]=="ussd":
+             send_at_wait('AT^USSDMODE=0\r',"OK",2)
+             if argv[2:]:
+                  print send_ussd(argv[2])    
+             else:
+                  print "-e untuk membatalkan sesi ussd"
+                  print "enter untuk keluar\n"
+                  while 1:
+                      inp=raw_input('ussd> ')
+                      if inp=='':
+                          exit()
+                      else:             
+                           print '\n',send_ussd(inp),'\n'
+
+        elif argv[1]=="sms":
+             resp = init_text_mode()
+             if resp.find("OK")<>-1:
+                 if argv[2:]:
+#READ SMS---------------------------------------------------------------------------------------------
+                     if argv[2]=="read":
+                         if argv[3:]:                     
+                             if argv[3]=="all":
+                                  resp = send('AT+CMGL="ALL"\r','OK',10000)
+                                  if resp<>"TIMEOUT":
+                                       resp=resp.split('+CMGL:')                                       
+                                       i=0
+                                       for ln in resp:
+                                            if len(ln)>25:
+                                                 print_sms(ln)
+                                                 print '\n'                                                  
+                                                 i=i+1
+                                       if i==0:
+                                            print "tidak ada pesan masuk"
+
+                             elif argv[3]=="unread":
+                                  resp = send('AT+CMGL="REC UNREAD"\r','OK',5000)
+                                  if resp<>"TIMEOUT":
+                                       resp=resp.split('+CMGL:')
+                                       i=0
+                                       for ln in resp:
+                                            if len(ln)>25:
+                                                 print_sms(ln)
+                                                 print '\n'                                                 
+                                                 i=i+1
+                                       if i==0:
+                                            print "tidak ada pesan masuk baru"
+                                  
+                             else: 
+                                str=u""+argv[3]
+                                if str.isdecimal():
+                                    resp = send_at_wait('AT+CMGR='+argv[3]+'\r',"+CMGR:",3)
+                                    if resp=="TIMEOUT":
+                                        print "Tidak ada record di index",argv[3]
+                                    else:
+                                        resp=argv[3]+','+resp.split('+CMGR:')[1]
+                                        print_sms(resp)
+                                else:
+                                  print "perintah yang tersedia:"
+                                  print "read all       membaca semua sms masuk"
+                                  print "read [index]   membaca sms sesuai index contoh: read 0"
+                                  print "read unread    membaca pesan yang belum terbaca"
+                                  exit()                                     
+                         else:
+                                  print "perintah yang tersedia:"
+                                  print "read all       membaca semua sms masuk"
+                                  print "read [index]   membaca sms sesuai index contoh: read 0"
+                                  print "read unread    membaca pesan yang belum terbaca"
+                                  exit()                                     
+                         exit()
+#DELETE SMS-------------------------------------------------------------------------------------------
+                     elif argv[2]=="del":
+                         if argv[3:]:
+                             if argv[3]=="all":
+                                 list=get_sms_list()
+                                 if list[0]==0:
+                                     print "kotak masuk kosong"  
+                                 else:
+                                     for i in range(1,len(list)):
+                                         resp=send_at_wait('AT+CMGD='+list[i]+'\r',"OK",4)
+                                         if resp<>"TIMEOUT":
+                                             print "index "+list[i]+" dihapus.."
+                             else:
+                                 str=u""+argv[3]
+                                 if str.isdecimal():
+                                    if send_at_wait('AT+CMGR='+argv[3]+'\r',"+CMGR:",3)<>"TIMEOUT":
+                                        if send_at_wait('AT+CMGD='+argv[3]+'\r',"OK",3)<>"TIMEOUT":
+                                            print "index "+argv[3]+" dihapus.."
+                                        else:
+                                            print "ERROR, gagal menghapus index ",argv[3]
+                                    else:
+                                         print "tidak ada record di index ",argv[3]
+                                 else:
+                                    print "perintah yang tersedia:"
+                                    print "del all       menghapus semua sms masuk"
+                                    print "del [index]   menghapus sms sesuai index contoh: del 0"
+                                    exit()
+                         else:
+                            print "perintah yang tersedia:"
+                            print "del all       menghapus semua sms masuk"
+                            print "del [index]   menghapus sms sesuai index contoh: del 0"
+                            exit()
+                         exit()
+#SEND SMS-------------------------------------------------------------------------------------------
+                     elif argv[2]=="send":
+                          if argv[3:]:
+                               if argv[4:]:
+                                  pesan=argv[4]
+                                  for i in range(5,35):
+                                     if argv[i:]:
+                                         pesan=pesan+" "+argv[i]
+                                     else:
+                                         break
+                                  pesan=pesan.replace("\\",chr(10))
+                                  if send_at_wait('AT+CMGS="'+argv[3]+'"\r',">",3)<>"TIMEOUT":                                 
+                                      if send_at_wait(pesan+chr(26),"+CMGS:",25)=="TIMEOUT":
+                                          print "ERROR, sms gagal dikirim"
+                                      else:
+                                          print "OK, sms sukses terkirim ke >",argv[3]
+                                  else:
+                                      print "ERROR, sms gagal dikirim"
+                               else:
+                                  print "perintah yang tersedia:"
+                                  print "send [no tujuan] pesan"
+                                  print "contoh: send 08123456789 hello world"
+                                  exit()
+                          else:
+                             print "perintah yang tersedia:"
+                             print "send [no tujuan] pesan"
+                             print "contoh: send 08123456789 hello world"
+                             exit()
+                     else:
+                        print "perintah yang tersedia:"
+                        print "read          membaca sms masuk"
+                        print "send          mengirim sms"
+                        print "del           menghapus sms" 
+                        exit()
+
+#ENDING SMS-----------------------------------------------------------------------------------------
+                 else: 
+                     print "perintah yang tersedia:"
+                     print "sms read          membaca sms masuk"
+                     print "sms send          mengirim sms"
+                     print "sms del           menghapus sms" 
+                     exit()
+             else:
+                  print "Error,.. gagal masuk text mode"
+#SHOW----------------------------------------------------------------------------------------------
+        elif argv[1]=="show":
+             if argv[2:]:
+                  if argv[2]=="port":
+                      print DEV
+                  elif argv[2]=="interface":
+                      print IFACE
+                  elif argv[2]=="apn":
+                       print popen('uci get network.'+IFACE+'.apn').read()                   
+                  elif argv[2]=="mode":
+                       res=popen('uci get network.'+IFACE+'.service').read().split('\n')[0]
+                       if res=="gprs_only":
+                           print "gprs"
+                       elif res=="umts_only":
+                           print "umts"
+                       elif res=="umts":
+                           print "umts-gprs"
+                       else:
+                           print "not defined"
+                  elif argv[2]=='smsc':
+                       print get_sms_center()
+                  elif argv[2]=='network':
+                       print "searching network.. please wait...\r\n"
+                       get_network()
+ 
+                  else:
+                     print "perintah yang tersedia:"
+                     print "show port"
+                     print "show interface"
+                     print "show apn"
+                     print "show mode"
+                     print "show smsc"
+                     print "show network"
+             else:
+                  print "perintah yang tersedia:"
+                  print "show port"
+                  print "show interface"
+                  print "show apn"
+                  print "show mode"
+                  print "show smsc"
+                  print "show network"
+        elif argv[1]=="at":
+             if argv[2:]:
+                 print send_at_wait(argv[2]+'\r',"OK",10)
+             
+             else:
+                 print "perintah yang tersedia:"
+                 print "at [type commang]"
+                 print "contoh at ATI"   
+             
+        else:
+           main_info()
+    else:
+        print "gsm versi 1.4 by mikodemos\n"
+        main_info()    
+
+#end
+

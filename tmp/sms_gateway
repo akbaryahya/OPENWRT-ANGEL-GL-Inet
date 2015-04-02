@@ -1,0 +1,322 @@
+#!/usr/bin/env bash
+case $1 in
+"install")
+cp -f sms_gateway /usr/bin/
+sleep 1
+chmod 755 /usr/bin/sms_gateway
+
+cat > /etc/config/sms_gateway << END
+config global 'setting'
+       option filter 'no'
+       option interval '15'
+	   option phonenumbers ''
+	   option color 'green'
+	   option version '27/03/2015'
+	   option source 'https://dl.dropboxusercontent.com/u/81253579/'
+END
+cat > /etc/init.d/sms_gateway << END
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2013 OpenWrt.org
+
+START=5
+USE_PROCD=1
+
+start_service()
+{
+	sms_gateway &
+}
+stop_service()
+{
+    ps |grep sms_gateway|grep -v grep > /dev/null
+    if [ "\$?" == "0" ];then
+        pid=\$(ps |grep sms_gateway|grep -v grep|awk -F" " '{print \$1}')
+        kill \$pid
+    fi
+}
+
+END
+sleep 1
+chmod 755 /etc/init.d/sms_gateway
+echo "install sms_gateway v2.5 selesai"
+echo "sms_gateway by Galih"
+exit 0
+;;
+
+"update")
+		source=`uci get sms_gateway.setting.source`
+		if [[ -z $source ]];then
+			echo "Update source tidak ditemukan"
+			exit 1
+		fi
+		ping google.com -c 1 > /dev/null
+		if [ $? == 1 ];then
+			echo "Gagal update, cek koneksi internet"
+			exit 1 
+		fi
+		cd /tmp/ > /dev/null
+		rm -f sms.tar > /dev/null
+		rm -f sms_gateway > /dev/null
+		wget --no-check-certificate $source/sms-gateway/sms.tar > /dev/null
+		if [ $? == 0 ];then
+			tar -xvf sms.tar -C / > /dev/null
+			chmod 744 sms_gateway > /dev/null
+			bash /tmp/sms_gateway install > /dev/null
+			echo "Update SMS Gateway Selessai"
+			exit 0
+		else
+			echo "Gagal update, cek koneksi internet"
+			exit 1
+		fi
+;;
+
+"bulk_sms")
+		bulknomer=(`cat /tmp/bulknomer`)
+		bulkpesan=`cat /tmp/bulkpesan`
+		line=1
+		totalloop=${#bulknomer[@]}
+		if [ "$totalloop" > "10" ]; then
+			exit 1
+		fi
+		echo "<font color=blue><b>$(date +%d-%m-%Y_%H:%M:%S) Bulk SMS mulai mengirim pesan...</b></font>" > /www/profile/sms-gateway.log
+		for ((i=0; i < totalloop; i++)); do
+			current=$((i+1))
+            gsm sms send ${bulknomer[$i]} "$bulkpesan" | grep "OK, sms sukses terkirim ke"
+			if [ "$?" = "0" ]; then
+				echo "<font color=green><b>($current of $totalloop) $(date +%d-%m-%Y_%H:%M:%S) Bulk SMS terkirim ke ${bulknomer[$i]}</b></font>" >> /www/profile/sms-gateway.log
+				echo "<b>DATE:</b>$(date +%d-%m-%Y_%H:%M:%S)<br><b>NOMER:</b>$i<br><b><b>ISI PESAN:</b></b><br>$bulkpesan<br>===============<br>" >> /www/profile/outbox.log
+				((line++))
+			else
+				echo "<font color=red><b>($current of $totalloop) $(date +%d-%m-%Y_%H:%M:%S) Bulk SMS gagal terkirim ke ${bulknomer[$i]}" >> /www/profile/sms-gateway.log
+				((line++))
+			fi
+		done
+		echo "<font color=blue><b>$(date +%d-%m-%Y_%H:%M:%S) Bulk SMS selesai mengirim pesan</b></font>" >> /www/profile/sms-gateway.log
+		echo "<b>SMS Sukses Terkirim: $(cat /www/profile/sms-gateway.log | grep -o "Bulk SMS terkirim ke" | wc -l)</b>" >> /www/profile/sms-gateway.log
+		echo "<b>SMS Gagal Terkirim: $(cat /www/profile/sms-gateway.log | grep -o "Bulk SMS gagal terkirim" | wc -l)</b>" >> /www/profile/sms-gateway.log
+		exit 0
+;;
+
+"info")
+		version=`uci get sms_gateway.setting.version`
+		echo "SMS Gateway by Galih"
+		echo "SMS Gateway versi: $version"
+		exit 0
+;;
+
+esac
+
+function mengolahpesan (){
+	if [[ ! -z $content ]] && [[ ! -z $myphonenumber ]]; then
+		echo "$(date +%d-%m-%Y_%H:%M:%S) Ada pesan masuk, memproses pesan..." >> /www/profile/sms-gateway.log
+		echo "<font color=blue><b>$(date +%d-%m-%Y_%H:%M:%S) Nomer Pengirim: $myphonenumber</font></b>" >> /www/profile/sms-gateway.log
+		echo "<font color=blue><b>$(date +%d-%m-%Y_%H:%M:%S) Isi pesan: $content</font></b>" >> /www/profile/sms-gateway.log
+		if [ "$(echo $content| awk '{print tolower($0)}')" = "status router" ]; then
+			echo "STATUS ROUTER:
+IP: $(ifconfig |grep P-t-P:10.64.64.64 |awk -F':' '{print $2}' |awk -F" " '{print $1}')
+Uptime: $(uptime | sed 's/^.*up//;s/\([0-9][0-9]*\):\([0-9][0-9]\)*/\1 hours and \2 minutes/')
+Free ROM: $(df -h / | tail -1 | awk '{print $4}')
+Free RAM: $(cat /proc/meminfo | awk '/MemFree/ {print $2,$3}')
+Free Mem (/mnt/usb/): $(df -h /mnt/usb | tail -1 | awk '{print $4}')" > /tmp/balasan
+			
+		elif [ "$content" = "reboot router" ]; then
+			gsm sms send $myphonenumber "Router akan direboot"
+			reboot
+
+		elif [ "$content" = "restart internet" ]; then
+			profile start
+			operator=`gsm info | grep "Operator"`
+			ip=`ifconfig |grep P-t-P:10.64.64.64 |awk -F':' '{print $2}' |awk -F" " '{print $1}'`
+			echo "Internet berhasil direstart
+$operator
+IP: $ip" > /tmp/balasan
+
+		elif [ "$content" = "stop internet" ]; then
+			profile stop
+			echo "Internet berhasil dimatikan, ketik 'restart internet' untuk menyalakan lagi" > /tmp/balasan
+			
+		elif [ "$content" = "cek pulsa telkomsel" ]; then
+			cekpulsa=`gsm ussd *888# | sed -n '3,5p'`
+			echo $cekpulsa > /tmp/balasan
+			
+		elif [ "$content" = "cek pulsa indosat" ]; then
+			cekpulsa=`gsm ussd *555# | sed -n '3,5p'`
+			echo $cekpulsa > /tmp/balasan
+			
+		elif [ "$content" = "cek pulsa xl" ]; then
+			cekpulsa=`gsm ussd *123# | sed -n '3p'`
+			echo $cekpulsa > /tmp/balasan
+			
+		elif [ "$content" = "cek pulsa three" ]; then
+			cekpulsa=`gsm ussd *111*1# | sed -n '3,5p'`
+			echo $cekpulsa > /tmp/balasan
+			
+		elif [ "$content" = "cek pulsa axis" ]; then
+			cekpulsa=`gsm ussd *888# | sed -n '3,5p'`
+			echo $cekpulsa > /tmp/balasan
+			
+		elif [ "$content" = "cek kuota three" ]; then
+			gsm sms send 234 "INFO DATA"
+			sleep 5
+			kuota=`gsm sms read unread > /tmp/kuota && grep "Nomor Tri Anda :" /tmp/kuota`
+			echo $kuota > /tmp/balasan
+			
+		elif [[ "$wget" == "http"* ]]; then
+			echo "$wget" > /www/profile/wget/wget-download-link.txt
+			/etc/init.d/wgetui start
+			file=`echo "$content" | sed 's/^.*\///g'`
+			echo "File: $file akan segera didownload..." > /tmp/balasan
+			
+		elif [ "$content" = "status download" ]; then
+			name=`grep "Saving to: " /www/profile/wget.log | tail -n 1 | sed "s/Saving to: //g; s/'//g" | sed 's/[!@#\$^&*(|)]//g; s/\[//g; s/\]//g; s/^.*\///g' | head -c 60`
+			type=`grep -E "Length.*\(" /www/profile/wget.log | tail -n 1 | awk '{print $NF}' | sed 's/\]//g; s/\[//g; s/^.*\///g'`
+			size=`grep "%" /www/profile/wget.log | tail -n 1 | awk '{print $1}'`
+			speed=`grep "%" /www/profile/wget.log | tail -n 1 | awk '{print $8}' | sed 's/K/KB\/s/g; s/M/MB\/s/g'`
+			percentage=`grep -o "^.*%" /www/profile/wget.log | tail -1 | awk '{print $NF}'`
+			total=`grep -E "Length.*\(" /www/profile/wget.log | tail -n 1 | awk '{print $3}' | sed 's/(//g; s/)//g; s/\[//g; s/\]//g; s/,//g; s/K/KB/g; s/M/MB/g; s/G/GB/g' | tr -d '\n\r'`
+			timeremaining=`grep "%" /www/profile/wget.log | tail -n 1 | awk '{print $9}'`
+			echo "STATUS DOWNLOAD:
+File: $name
+Downloaded: $size ($percentage)
+Speed: $speed
+Time Left: $timeremaining
+Total Size: $total" > /tmp/balasan
+
+		elif [ "$content" = "continue download" ]; then
+			link=`cat /www/profile/wget/wget-download-link.done`
+			mv /www/profile/wget/wget-download-link.done /www/profile/wget/wget-download-link.txt
+			/etc/init.d/wgetui stop > /dev/null 2>&1
+			/etc/init.d/wgetui start > /dev/null 2>&1 &
+			if [ -z "$link" ]; then
+				echo "Link download tidak ditemukan" > /tmp/balasan
+			else
+				echo "Continue downloading from:
+$link" > /tmp/balasan
+			fi
+			
+		elif [ "$content" = "stop download" ]; then
+			name=`grep "Saving to: " /www/profile/wget.log | sed "s/Saving to: //g; s/'//g"`
+			killall wget > /dev/null
+			echo "File:$name
+Status: Download sudah dihentikan" > /tmp/balasan
+			
+		elif [ "$content" = "wifi up" ]; then
+			wifi up
+			echo "WiFi dihidupkan" > /tmp/balasan
+		
+		elif [ "$content" = "wifi down" ]; then
+			wifi down
+			echo "WiFi dimatikan, ketik 'wifi up' untuk menghidupkan kembali" > /tmp/balasan
+			
+		elif [ "$content" = "who's connected" ]; then
+			wifi=`profile wifi-clients | sed 's/|//g; 2,3d'`
+			echo "$wifi" > /tmp/balasan
+			
+	else
+cat > /tmp/balasan << END
+AVAILABLE COMMANDS: 
+1. status router
+2. reboot router
+3. restart internet
+4. cek pulsa namaoperator
+5. httpxxx
+6. status download
+7. stop download
+8. cek kuota three
+9. wifi up
+10. wifi down
+11. stop internet
+12. continue download
+13. who's connected
+END
+		fi
+	fi
+}
+	
+function kirimbalasan(){
+	balasan=`cat /tmp/balasan | tr '\n\r' '\' | sed 's/[!@#$^&*|~]//g; s/\[//g; s/\]//g' | sed '/^\s*$/d'`
+	if [[ ! -z "$balasan" ]];then
+		split=${#balasan}
+		array=( "${balasan:0:160}" "${balasan:160:160}" "${balasan:320:160}" "${balasan:480:160}" "${balasan:640:160}" )
+		for i in "${array[@]}"
+		do
+			if [[ ! -z $i ]];then
+				gsm sms send $myphonenumber $i | grep "OK, sms sukses terkirim ke"
+				if [ "$?" = "0" ]; then
+					echo "$smssukses $i</b></font>" | sed 's#\\#<br>#g' >> /www/profile/sms-gateway.log
+					echo "<b>DATE:</b>$(date +%d-%m-%Y_%H:%M:%S)<br><b>NOMER:</b>$myphonenumber<br><b><b>ISI PESAN:</b></b><br>$i<br>===============<br>" >> /www/profile/outbox.log
+				else
+					echo "$smsgagal" >> /www/profile/sms-gateway.log
+				fi
+			fi
+		done
+	fi
+	rm -f /tmp/balasan
+	
+	# Kalau tidak ada pesan masuk baru
+	cat /tmp/pesan | grep "tidak ada pesan masuk baru"
+	if [ "$?" = "0" ]; then
+		color=`uci get sms_gateway.setting.color`
+		if [ "$color" == "green" ]; then
+			echo "<font color='green'><b>$(date +%d-%m-%Y_%H:%M:%S)</b></font> Belum ada pesan masuk..." >> /www/profile/sms-gateway.log
+			sed -i "s/option color.*/option color 'purple'/g" /etc/config/sms_gateway
+		else
+			echo "<font color='purple'><b>$(date +%d-%m-%Y_%H:%M:%S)</b></font> Belum ada pesan masuk..." >> /www/profile/sms-gateway.log
+			sed -i "s/option color.*/option color 'green'/g" /etc/config/sms_gateway
+		fi
+	else
+		echo "<b>$(date +%d-%m-%Y_%H:%M:%S) Gagal cek inbox, coba reset atau cabut modem</b>" >> /www/profile/sms-gateway.log
+	fi
+}
+
+function hapusinbox(){
+	# Mengecek inbox, jika lebih dari 48 pesan maka seluruh inbox akan dihapus supaya pesan2 lain bisa masuk
+	if [[ "$totalinbox" -ge 48 ]]; then
+		echo "<font color=red><b>$(date +%d-%m-%Y_%H:%M:%S) Total pesan di inbox sudah melebihi 48 SMS, inbox akan di hapus...</b></font>" >> /www/profile/sms-gateway.log
+		gsm sms del all
+	fi
+}
+
+while true
+do
+# Checking the file size of sms_gateway.log if it's greater than 100KB then reset it back to zero
+file="/www/profile/sms-gateway.log"
+maxsize="100000" # Ukuran di set 100KB, 1KB = 1000 Byte
+actualsize=$(wc -c "$file" | cut -f 1 -d ' ')
+if [ "$actualsize" -ge "$maxsize" ]; then
+	echo "" > /www/profile/sms-gateway.log
+	echo "Ukuran log lebih dari 100KB, log direset..." >> /www/profile/sms-gateway.log
+fi
+
+# Memulai loop SMS Gateway
+filter=`uci get sms_gateway.setting.filter`
+interval=`uci get sms_gateway.setting.interval`
+phonenumbers=`uci get sms_gateway.setting.phonenumbers`
+gsm sms read unread > /tmp/pesan
+myphonenumber=`grep "sender: " /tmp/pesan | sed 's/^.*: //'`
+content=`sed 's/gsm versi.*//g; s/^.*sender.*//g; s/date: .*//g' /tmp/pesan | tr -d '\n\r' | tr '[A-Z]' '[a-z]'`
+wget=`sed 's/gsm versi.*//g; s/^.*sender.*//g; s/date: .*//g' /tmp/pesan | tr -d '\n\r'`
+totalinbox=`grep "sender:" /tmp/pesan | sed 's/ .*//' | tr -d '\n\r'`
+smssukses="<font color=green><b>$(date +%d-%m-%Y_%H:%M:%S) Sukses terkirim, isi pesan:<br>"
+smsgagal="<font color=red><b>$(date +%d-%m-%Y_%H:%M:%S) SMS balasan gagal dikirim, coba reset atau cabut modem</b></font>" 
+
+if [[ "$filter" == "yes" ]]; then
+	case "${phonenumbers[@]}" in  
+		*"$myphonenumber"*) 
+		mengolahpesan 
+		kirimbalasan
+		hapusinbox
+		;;
+		*) 
+		echo "$(date +%d-%m-%Y_%H:%M:%S) Ada pesan masuk, memproses pesan..." >> /www/profile/sms-gateway.log
+		echo "<font color=blue><b>$(date +%d-%m-%Y_%H:%M:%S) Isi pesan: $content</b></font>" >> /www/profile/sms-gateway.log
+		echo "<font color=red><b>$(date +%d-%m-%Y_%H:%M:%S) Nomer: $myphonenumber tidak ada dalam list, pesan diabaikan...</b></font>" >> /www/profile/sms-gateway.log 
+		;;  
+	esac
+fi
+if [[ "$filter" == "no" ]]; then
+	mengolahpesan
+	kirimbalasan
+	hapusinbox
+fi
+sleep $interval
+done

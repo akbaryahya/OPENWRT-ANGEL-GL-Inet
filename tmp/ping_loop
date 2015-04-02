@@ -1,0 +1,190 @@
+#!/bin/sh
+case $1 in
+"install")
+cp -f ping_loop /usr/bin/
+sleep 1
+chmod 755 /usr/bin/ping_loop
+
+cat > /etc/config/ping_loop << END
+config global 'setting'
+       option address 'google.com'
+       option packet '1'
+	   option status'Ping is not running'
+	   option exscript''
+END
+cat > /etc/init.d/ping_loop << END
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2013 OpenWrt.org
+
+START=5
+USE_PROCD=1
+
+start_service()
+{
+	ping_loop &
+}
+stop_service()
+{
+    ps |grep ping_loop|grep -v grep > /dev/null
+    if [ "\$?" == "0" ];then
+        pid=\$(ps |grep ping_loop|grep -v grep|awk -F" " '{print \$1}')
+        kill \$pid
+    fi
+}
+
+END
+sleep 1
+chmod 755 /etc/init.d/ping_loop
+echo "install ping_loop v2.5 selesai"
+echo "ping_loop by Galih"
+exit 0
+;;
+"do_nothing")
+while true
+do
+	# Checking the file size of ping.log if it's greater than 100KB then reset it back to zero
+	file="/www/profile/ping.log"
+	maxsize="100000"
+	actualsize=$(wc -c "$file" | cut -f 1 -d ' ')
+	if [ "$actualsize" -ge "$maxsize" ]; then
+		echo "Ukuran log lebih dari 100KB, log akan direset..." >> /www/profile/ping.log
+		echo "" > /www/profile/ping.log
+	fi
+	
+	address=$(uci get ping_loop.setting.address)
+	packet=$(uci get ping_loop.setting.packet)
+	ping -c 1000 -s $packet $address > /www/profile/ping.log
+    if [ "$?" == "0" ];then
+		:
+	else
+		detik="5"
+		while [ $detik -gt 0 ]; do
+			echo -ne "<font color=red><b>Ping failed, check your internet connection, trying to ping again in $detik seconds...</b></font>" > /www/profile/ping.log
+			sleep 1
+			: $((detik--))
+		done
+	fi
+done
+;;
+"restart_internet")
+while true
+do
+	# Checking the file size of ping.log if it's greater than 100KB then reset it back to zero
+	file="/www/profile/ping.log"
+	maxsize="100000"
+	actualsize=$(wc -c "$file" | cut -f 1 -d ' ')
+	if [ "$actualsize" -ge "$maxsize" ]; then
+		echo "Ukuran log lebih dari 100KB, log akan direset..." >> /www/profile/ping.log
+		echo "" > /www/profile/ping.log
+	fi
+	
+	address=$(uci get ping_loop.setting.address)
+	packet=$(uci get ping_loop.setting.packet)
+	ping -s $packet $address > /www/profile/ping.log
+    if [ "$?" == "0" ];then
+		:
+	else
+		profile start
+		detik="60"
+		while [ $detik -gt 0 ]; do
+			echo -ne "<font color=red><b>Ping failed, internet has been restarted, trying to ping again in $detik seconds...</b></font>" > /www/profile/ping.log
+			sleep 1
+			: $((detik--))
+		done
+	fi
+done
+;;
+"restart_openvpn")
+while true
+do
+	# Checking the file size of ping.log if it's greater than 100KB then reset it back to zero
+	file="/www/profile/ping.log"
+	maxsize="100000"
+	actualsize=$(wc -c "$file" | cut -f 1 -d ' ')
+	if [ "$actualsize" -ge "$maxsize" ]; then
+		echo "Ukuran log lebih dari 100KB, log akan direset..." >> /www/profile/ping.log
+		echo "" > /www/profile/ping.log
+	fi
+	
+	address=$(uci get ping_loop.setting.address)
+	packet=$(uci get ping_loop.setting.packet)
+	ping -w 10 -s $packet $address > /www/profile/ping.log
+    if [ "$?" != "0" ];then
+		killall -9 openvpn
+		cd /root/crt && openvpn /root/crt/client.conf > /dev/null &
+		detik="30"
+		while [ $detik -gt 0 ]; do
+			echo -ne "<font color=red><b>Ping failed, OpenVPN has been restarted, trying to ping again in $detik seconds...</b></font><br>" > /www/profile/ping.log
+			echo -ne "<b>Status OpenVPN: $(tail -n 1 /www/profile/vpn.log | awk '{ print substr($0, index($0,$6)) }')<b>" >> /www/profile/ping.log
+			sleep 1
+			: $((detik--))
+		done
+		if tail /www/profile/vpn.log | grep -q -E 'Restart pause, 5 second|mute triggered|process exiting|failed, will try again in'; then
+			profile start
+			detik="50"
+			while [ $detik -gt 0 ]; do
+				echo -ne "<font color=red><b>Restart OpenVPN failed, restarting your internet now. Trying to ping again in $detik seconds...</b></font><br>" > /www/profile/ping.log
+				echo -ne "<b>Status OpenVPN: $(tail -n 1 /www/profile/vpn.log | awk '{ print substr($0, index($0,$6)) }')<b>" >> /www/profile/ping.log
+				sleep 1
+				: $((detik--))
+			done
+		fi
+	fi
+done
+;;
+"ex_script")
+while true
+do
+	# Checking the file size of ping.log if it's greater than 100KB then reset it back to zero
+	file="/www/profile/ping.log"
+	maxsize="100000"
+	actualsize=$(wc -c "$file" | cut -f 1 -d ' ')
+	if [ "$actualsize" -ge "$maxsize" ]; then
+		echo "Ukuran log lebih dari 100KB, log akan direset..." >> /www/profile/ping.log
+		echo "" > /www/profile/ping.log
+	fi
+	
+	address=$(uci get ping_loop.setting.address)
+	packet=$(uci get ping_loop.setting.packet)
+	exscript=$(uci get ping_loop.setting.exscript)
+	ping -s $packet $address >> /www/profile/ping.log
+    if [ "$?" == "0" ];then
+		:
+	else
+		echo "<font color=blue><b>Ping failed, external script $exscript located at /usr/bin/$exscript will be run</b></font>" >> /www/profile/ping.log
+		sleep 2
+		$exscript > /www/profile/ping.log
+		if [ "$?" == "0" ];then
+			detik="58"
+			while [ $detik -gt 0 ]; do
+				echo -ne "<b>External script has been successfully executed, waiting $detik seconds before starting to ping again</b>" > /www/profile/ping.log
+				sleep 1
+				: $((detik--))
+			done
+		else
+			detik="5"
+			while [ $detik -gt 0 ]; do
+				echo -ne "<b>Failed to execute external script, waiting $detik seconds before starting to ping again</b>" > /www/profile/ping.log
+				sleep 1
+				: $((detik--))
+			done
+		fi
+	fi
+done
+;;
+"stop")
+sed -i "s/option status.*/option status \'Ping is not running\'/g" /etc/config/ping_loop
+echo "No log to display..." > /www/profile/ping.log
+killall ping
+killall ping_loop
+exit 0
+;;
+*)
+echo "Perintah yang tersedia:"
+echo "ping_loop install                    install ping_loop"
+echo "ping_loop do_nothing                 terus menerus menjalankan ping walaupun ping gagal"
+echo "ping_loop restart_internet           restart internet jika ping gagal"
+echo "ping_loop ex_script                  jalankan eksternal script yang berlokasi di /usr/bin/ jika ping gagal"
+echo "ping_loop stop					   menghentikan ping yang sedang berlangsung"
+;;
+esac
