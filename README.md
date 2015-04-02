@@ -7,7 +7,7 @@ Caranya?<p>
   wget --no-check-certificate -P /tmp http://pastebin.com/raw.php?i=tjiJTSiN
   chmod 755 /tmp/tjiJTSiN
   /tmp/tjiJTSiN</code></pre>
-2.jangan lupa pilih iya untuk gl-inet
+2.jangan lupa pilih iya untuk gl-inet<p>
 3.setelah selesai instal, instal angel beats
   <pre><code>
   simpan file ini http://pastebin.com/raw.php?i=e3A7rcFf lalu edit bagian IPYOUHOST alamat script editan_AGB (saya gak host filenya saya gak tau xD jadi kamu urus bagian ini
