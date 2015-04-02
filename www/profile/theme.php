@@ -169,7 +169,6 @@ input[type=submit]:hover {
 <a href="ping.php" style="text-decoration:none;"><font color="black">Ping Loop</font></a>
 </p>
 <p>
-<a href="/cgi-bin/luci" target="_blank" style="text-decoration:none;"><font color="black">LuCi</font></a> |
 <a href="video.php" style="text-decoration:none;"><font color="black">Video Player</font></a> | 
 <a href="mp3.php" style="text-decoration:none;"><font color="black">MP3 Player</font></a> | 
 <a href="log.php" style="text-decoration:none;"><font color="black">Log</font></a> | 
@@ -180,6 +179,6 @@ input[type=submit]:hover {
 <div class="MenuBox">';
 }
 function foot() {
-echo '<div class="glow"><strong>OpenWrt Angel Beats! Edition (v1.6.6)<br>Copyright © Mikodemos 2014 - Modified by Galih</strong></div>';
+echo '<div class="glow"><strong>OpenWrt Angel Beats! Edition (v1.6.6)<br>Dibuat Mikodemos,Diedit oleh Galih dan Siakbary</strong></div>';
 }
 ?>

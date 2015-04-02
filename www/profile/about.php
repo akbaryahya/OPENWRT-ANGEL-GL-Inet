@@ -36,7 +36,7 @@ if ($show == "home"){
 exec('profile hw-info',$out);
 exec('df -h / | tail -1 | awk \'{print $4}\'',$rom);
 exec('cat /proc/meminfo | awk \'/MemFree/ {print $2,$3}\'',$ram);
-exec('df -h /mnt/usb | tail -1 | awk \'{print $4}\'',$mem);
+exec('df -h /mnt/DATA | tail -1 | awk \'{print $4}\'',$mem);
 exec('uptime | sed "s/^.*load/Load/"',$load);
 exec('uptime | sed \'s/^.*up//;s/\([0-9][0-9]*\):\([0-9][0-9]\)*/\1 hours and \2 minutes/;s/,  load.*//\'',$uptime);
 exec('uci get network.lan.ipaddr',$ip); 
@@ -52,7 +52,7 @@ for($x=0;$x<$arrlength;$x++)
   }
 echo "Free ROM : $rom[0]<br>";
 echo "Free RAM : $ram[0]<br>";
-echo "Free Mem (/mnt/usb/) : $mem[0]<br>";
+echo "Free Mem (/mnt/DATA/) : $mem[0]<br>";
 echo "$load[0]<br>";
 echo "Uptime :$uptime[0]<br>";
 echo "IP Router : $ip[0]<br><br>";

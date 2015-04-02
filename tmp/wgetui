@@ -7,7 +7,7 @@ case $1 in
 
 		cat > /etc/config/wgetui << END
 config global 'setting'
-		option directory '/mnt/usb'
+		option directory '/mnt/DATA'
 		option maxretry '200'
 		option limit '0'
 		option timeout '90'

@@ -1,0 +1,283 @@
+<!DOCTYPE HTML>
+<html lang="zh-cn" prefix="og: http://ogp.me/ns#"><!--<![endif]-->
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="initial-scale=1.0; maximum-scale=3.0; width=device-width">
+	<title>GL.iNet</title>
+	<link rel="profile" href="http://gmpg.org/xfn/11">
+	<script type="text/javascript" src="/js/updateurl.js?ver=1.0"></script>
+	<link rel="stylesheet" type="text/css" href="/css/glmobile.css">
+	<link rel="stylesheet" href="/css/hint.min.css">
+	<script type="text/javascript" src="/js/jquery-1.11.0.min.js" ></script>
+	<script type="text/javascript" src="/js/gl.js"></script>
+</head>
+<body>
+	
+<div class="container">
+	<div class="mobile-main">
+		<div class="header">
+			<a href="/index.html"><img style="height:40px" src="/images/logo.png"></a>
+			<input type="hidden" id="language" value="English">
+			<a id="icon-show-tools" href="javascript:show_tools();"><img src="/images/mobile.png"></a>
+			<div id="mobile-tools">
+				<ul>
+					<li><a href="javascript:reboot();">Reboot</a></li>
+					<li><a href="javascript:logout();">Logout</a></li>					
+					<li><a href="/cgi-bin/luci">OpenWRT</a></li>
+					<li><a href="/cgi-bin/luci">Angel Beats</a></li>
+				</ul>
+			<script>
+		var ip = location.host;		
+	    var abgb = document.getElementById('agbe');
+        abgb.href = "http://"+ip+":81"
+        </script>
+			</div>
+		</div>	
+		<div id="div_settings">
+			<div style="text-align:center;font-size:20px;margin-top:10px;margin-bottom:10px;"></div>
+			<div class="div_setting" id="div-internet"> 
+				<img src="/images/internet.png" id="img-internet">
+				<div class="div_setting_value">
+					<label id="internet_ipaddr" class="label_s1">...</label>
+					<label id="internet_proto" class="label_s2">...</label>
+				</div>
+			</div>
+			<div class="div_setting" id="div-wifi"> 
+				<img src="/images/wifi.png" id="img-wifi">
+				<div class="div_setting_value">
+					<label id="wifi_ssid" class="label_s1">...</label>
+					<label id="wifi_mode"class="label_s2">...</label>
+				</div>
+				<div class="status_icon onoffswitch">
+					<input type="checkbox" name="wifi_status" class="onoffswitch-checkbox" id="wifi_status" checked>
+					<label class="onoffswitch-label" for="wifi_status">
+						<div class="onoffswitch-inner"></div>
+						<div class="onoffswitch-switch"></div>
+					</label>
+				</div>
+			</div>
+			<div class="div_setting" id="div-port"> 
+				<img src="/images/ports.png">
+				<div class="div_setting_value">
+					<label id="port_status" class="label_s1">...</label>
+					<label id="port_value" class="label_s2">...</label>
+				</div>
+			</div>
+			<div class="div_setting" id="div-clients"> 
+				<img src="/images/clients.png">
+				<div class="div_setting_value">
+					<label id="client_count" class="label_s1">0 Clients</label>
+					<label id="client_names" class="label_s2">...</label>
+				</div>
+			</div>
+			<hr style="width:100%;margin-left:0; margin-top:10px">
+			<div id="div_devices">
+				<div class="div_setting narrow" id="device0"> 
+					<img src="/images/usb.png">
+					<div class="div_setting_value narrow">
+						<label class="label_s1">...</label>
+						<div class="available"><div class="usage"></div></div>
+					</div>
+				</div>
+			</div>
+			<hr style="width:100%;margin-left:0; margin-top:10px">
+			<div class="div_setting" id="div-firmware"> 
+				<img src="/images/firmware.png">
+				<div class="div_setting_value">
+					<label class="label_s1">Firmware</label>
+					<label class="label_s2">...</label>
+				</div>
+				<img src="/images/new.png" class="status_icon hide">
+			</div>
+			<div class="div_setting" id="div-app"> 
+				<img src="/images/store.png">
+				<div class="div_setting_value">
+					<label class="label_s1">Applications</label>
+					<label class="label_s2">6</label>
+				</div>
+			</div>
+		</div>
+		<hr>
+	
+		<div id="div_footer">
+			<a class="footer_a" href="http://www.gl-inet.com">Online manual</a> |
+			<a class="footer_a" href="http://bbs.gl-inet.com">Forum</a>
+			<label id="copyright">@2014 GL.iNet</label>
+		</div>
+	</div>	
+	<div  id="div-main-holder" class="hidden">
+		<img id="back" src="/images/back.png" class="back">
+		<div  id="div_main" >
+
+		</div>
+	</div>
+
+	
+</div>
+	
+<div id="modal" class="modal">
+	<a id="modal-close" href="#close" title="Close" class="close">X</a>
+	<div id="model_content">
+	</div>
+</div>
+
+<div id="div-reboot" class="modal-reboot">
+	<div id="div-reboot-title">
+		Rebooting
+	</div>
+	<div class="progress-bar"><span>0%</span></div>
+</div>
+
+<div id="overlay"></div>
+
+
+</body>
+<script>
+$.ajaxSetup({
+	cache: false
+});
+
+/*Bind event*/
+$("#img-internet").click(function(e){ 
+	e.stopPropagation();
+	popWanSetting();
+});
+$("#img-wifi").click(function(e){ 
+	e.stopPropagation();
+	popWifiSetting();
+});
+$(".div_setting").click(function(){
+	$(".mobile-main").toggleClass("hidden");
+	$("#div-main-holder").toggleClass("hidden");
+});
+$("#div-internet").click(function(){ 
+	$("#div_main").load("/wan_status.html")
+});
+$("#div-wifi").click(function(){ 
+	$("#div_main").load("/wifi_status.html")
+});
+$("#div-port").click(function(){ 
+	$("#div_main").load("/port_status.html")
+});
+$("#div-firmware").click(function(){ 
+	$("#div_main").load("/firmware_status.html")
+});
+$("#div-clients").click(function(){ 
+	$("#div_main").load("/clients.html")
+});
+$("#div-app").click(function(){
+	$("#div_main").load("apps.html")
+});
+
+$(".div_setting").click(function(){
+	$(".indicator").hide();
+	$(this).find(".indicator").show();
+});
+
+$("#back").click(function(){
+	$(".mobile-main").toggleClass("hidden");
+	$("#div-main-holder").toggleClass("hidden");
+	if(window.history.pushState)window.history.pushState("html", "GL.iNet", "/mobile/index.html");
+});
+
+function setup_access(){
+	$('#div-port').trigger('click');
+}
+function change_lanip(){
+	$("#div-wifi").trigger('click');
+	setTimeout(function(){display_lanip()},200);
+}
+$("#wifi_status").click(function(e){
+	e.stopPropagation();
+});
+$(".onoffswitch").click(function(e){
+	e.stopPropagation();
+});
+$("#wifi_status").change(function(e){
+	stopChecker();
+	var status;
+	if($(this).is(':checked'))
+		status="Turn+On";
+	else
+		status="Turn+Off";
+	var data="action=updatewifi&submit="+status;
+	$.ajax({
+		type: "POST",
+		url: "/cgi-bin/router_cgi",
+		data: data,
+		dataType: 'json',
+		success: function(result){
+			startChecker();
+		},
+		error:function(data,textStatus,jqXHR){
+			startChecker();
+		}
+	});
+});
+
+function highlight_app(url){
+	var div_app=$(".div_app[data-url='"+url+"']");
+	$(div_app).find(".indicator1").show();
+	if(url != "index") 	$(".div_app").addClass("dim");
+	$(div_app).removeClass("dim");
+	$(div_app).addClass("highlight");
+}
+
+function show_tools(){
+	$("#mobile-tools").toggle();
+}
+$('html').click(function() {
+	$("#mobile-tools").hide();
+});
+$("#mobile-tools").click(function(event){
+	event.stopPropagation();
+});
+$("#icon-show-tools").click(function(event){
+	event.stopPropagation();
+});
+$("#wifi_status").click(function(e){
+	e.stopPropagation();
+});
+/*Run once after load*/
+getNetworkStatus();
+getDeviceStatus();
+checkUpnp();
+getClients();
+getFirmwareStatus();
+
+var checker;
+var checker_upnp;
+var query=document.URL.split('?')[1];
+var page;
+if((page=query.match(/[a-z0-9_]*.html/))){
+	$("#div_main").load("/"+page);
+	highlight_app(page);
+	$(".mobile-main").toggleClass("hidden");
+	$("#div-main-holder").toggleClass("hidden");
+}else{
+	$("#div_main").load("/default.html")
+	highlight_app("index");
+	
+	startChecker();
+	checker_upnp=setInterval(function(){
+		checkUpnp();
+	},60000);
+}
+
+function startChecker(){
+	checker=setInterval(function(){
+		getNetworkStatus();
+		getDeviceStatus();
+		getClients();
+	},5000);
+}
+function stopChecker(){
+	window.clearInterval(checker);
+}
+
+/*Close the popup*/
+$("#modal-close").click(function(){
+	close_modal();
+});
+</script>
+</html>

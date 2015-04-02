@@ -116,7 +116,7 @@ IP: $(ifconfig |grep P-t-P:10.64.64.64 |awk -F':' '{print $2}' |awk -F" " '{prin
 Uptime: $(uptime | sed 's/^.*up//;s/\([0-9][0-9]*\):\([0-9][0-9]\)*/\1 hours and \2 minutes/')
 Free ROM: $(df -h / | tail -1 | awk '{print $4}')
 Free RAM: $(cat /proc/meminfo | awk '/MemFree/ {print $2,$3}')
-Free Mem (/mnt/usb/): $(df -h /mnt/usb | tail -1 | awk '{print $4}')" > /tmp/balasan
+Free Mem (/mnt/DATA/): $(df -h /mnt/DATA | tail -1 | awk '{print $4}')" > /tmp/balasan
 			
 		elif [ "$content" = "reboot router" ]; then
 			gsm sms send $myphonenumber "Router akan direboot"
