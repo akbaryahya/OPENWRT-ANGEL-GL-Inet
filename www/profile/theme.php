@@ -1,25 +1,15 @@
 <?php
 function ceklogin(){
     session_start();
-	if (($_SESSION['loggedin'] != 1) || isset($_SESSION['LAST_ACTIVITY']) && (time() - $_SESSION['LAST_ACTIVITY'] > 1800)) {
+if (($_SESSION['loggedin'] != 1) || isset($_SESSION['LAST_ACTIVITY']) && (time() - $_SESSION['LAST_ACTIVITY'] > 1800)) {
     session_unset();
     session_destroy();
 	header("Location: login.php");
 }
-	$_SESSION['LAST_ACTIVITY'] = time(); // update last activity time stamp
+$_SESSION['LAST_ACTIVITY'] = time(); // update last activity time stamp
 }
-
-function bgchange(){
-		$bg = array('images/angel-beats-bg1.jpg', 'images/angel-beats-bg2.jpg', 'images/angel-beats-bg3.jpg', 'images/angel-beats-bg4.jpg', 'images/angel-beats-bg5.jpg'); // array of filenames
-		$i = rand(0, count($bg)-1); // generate random number size of the array
-		$selectedBg = "$bg[$i]"; // set variable equal to which random filename was chosen (angel beats)
-        return $selectedBg; 
-		echo $selectedBg; // Menampilkan background
-					} 
-$bgUrl = bgchange();
-function css(){
-global $bgUrl;
-echo '
+?>
+<?php function css(){ ?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -41,7 +31,6 @@ body {
 	-o-background-size: cover;
 	background-size: cover;
 	background-image: url(images/angel-beats-bg1.jpg);
-	/*background-image: url('.$bgUrl.');*/
 	background-repeat: no-repeat;
 	margin: auto;
 	width: auto;
@@ -169,15 +158,23 @@ input[type=submit]:hover {
 <a href="ping.php" style="text-decoration:none;"><font color="black">Ping Loop</font></a>
 </p>
 <p>
+<a href="#" style="text-decoration:none;" id="agbe"><font color="black">GL-inet</font></a> | 
 <a href="video.php" style="text-decoration:none;"><font color="black">Video Player</font></a> | 
 <a href="mp3.php" style="text-decoration:none;"><font color="black">MP3 Player</font></a> | 
 <a href="log.php" style="text-decoration:none;"><font color="black">Log</font></a> | 
 <a href="about.php" style="text-decoration:none;"><font color="black">About</font></a>
 </p>
 </div>
+<script>
+var ip = location.host;	
+var del80 = ip.replace(/:81/g,'');	
+var abgb = document.getElementById("agbe");
+abgb.href = "http://"+del80+""
+</script>
 </strong>
-<div class="MenuBox">';
-}
+<div class="MenuBox">
+<?php } ?>
+<?php
 function foot() {
 echo '<div class="glow"><strong>OpenWrt Angel Beats! Edition (v1.6.6)<br>Dibuat Mikodemos,Diedit oleh Galih dan Siakbary</strong></div>';
 }
