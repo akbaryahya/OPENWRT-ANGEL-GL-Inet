@@ -146,6 +146,8 @@ kodok=`grep auto_kodok $profile |awk -F"'" '{print $2}'`
 use_vpn=`grep use_vpn $profile |awk -F"'" '{print $2}'`
 use_inject=`grep use_inject $profile |awk -F"'" '{print $2}'`
 payload=`grep payload_inject $profile |awk -F"'" '{print $2}'|awk -F" " '{print $1}'`
+limitfree=`grep limitfree $profile |awk -F"'" '{print $2}'`
+dnscrypt=`grep dnscrypt $profile |awk -F"'" '{print $2}'`
 IFACE=$(grep IFACE /etc/config/gsm |awk -F"'" '{print $2}')
 apn=$(grep apn_modem $profile |awk -F"'" '{print $2}')
 echo "$waktu Apn modem : $apn" >> /www/profile/dial.log
@@ -349,8 +351,67 @@ do
                     fi
                   fi
                 fi
-             fi 
-          fi  
+             fi
+             if [ $dnscrypt == 'yes' ];then			   
+			   uci delete dhcp.@dnsmasq[0].server
+               uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#2053'
+               uci add_list dhcp.@dnsmasq[0].server='/pool.ntp.org/192.168.170.28'			   
+			   uci set dhcp.@dnsmasq[0].noresolv=1			   
+			   uci delete dhcp.@dnsmasq[0].resolvfile
+			   uci commit dhcp
+			   /etc/init.d/dnscrypt-proxy start
+			   /etc/init.d/dnsmasq restart
+			   echo "$waktu Mode Dnscrypt : aktif" >> /www/profile/dial.log
+               echo "Mode Dnscrypt : aktif"
+			   sleep 5
+			   ping -w 5 -s 10 fb.me
+			   if [ "$?" = "0" ];then
+                echo "$waktu Dnscrypt Normal" >> /www/profile/dial.log
+               else
+                echo "$waktu Dnscrypt aktif tapi tidak dapat melakukan terjemahan domain, mencoba menrestart ulang" >> /www/profile/dial.log
+				sleep 15
+			    /etc/init.d/dnscrypt-proxy reload
+				sleep 5				
+				ping -w 5 -s 10 fb.me
+			     if [ "$?" = "0" ];then
+				  echo "$waktu Dnscrypt kembali normal" >> /www/profile/dial.log
+				  else				  
+				  echo "$waktu Dnscrypt tidak bisa aktif, kembali ke dns isp, silakan coba lagi dengan tekan reset internet, jika ingin fitur dnscrypt" >> /www/profile/dial.log
+				  uci delete dhcp.@dnsmasq[0].server
+				  uci delete dhcp.@dnsmasq[0].noresolv
+			      uci set dhcp.@dnsmasq[0].resolvfile=/tmp/resolv.conf.auto
+			      uci commit dhcp
+			      /etc/init.d/dnscrypt-proxy stop
+				  /etc/init.d/dnsmasq restart
+				 fi				
+               fi
+			 else
+			   uci delete dhcp.@dnsmasq[0].server
+			   uci delete dhcp.@dnsmasq[0].noresolv
+			   uci set dhcp.@dnsmasq[0].resolvfile=/tmp/resolv.conf.auto
+			   uci commit dhcp
+			   /etc/init.d/dnscrypt-proxy stop
+			   /etc/init.d/dnsmasq restart
+			   echo "$waktu Mode Dnscrypt : tdk aktif" >> /www/profile/dial.log
+               echo "Mode Dnscrypt : tdk aktif"
+			   sleep 5
+			   ping -w 5 -s 10 fb.me
+			   if [ "$?" = "0" ];then
+                echo "$waktu DNS NORMAL" >> /www/profile/dial.log
+               else
+                echo "$waktu DNS TIDAK NORMAL" >> /www/profile/dial.log
+               fi
+             fi
+			 if [ $limitfree == 'yes' ];then
+			   /etc/init.d/wshaper start
+			   echo "$waktu Mode Wshaper : aktif" >> /www/profile/dial.log
+               echo "Mode Wshaper : aktif"			   
+			  else
+			   /etc/init.d/wshaper stop
+			   echo "$waktu Mode Wshaper : tdk aktif" >> /www/profile/dial.log
+               echo "Mode Wshaper : tdk aktif"
+			 fi
+		  fi  
        fi
      fi
    else

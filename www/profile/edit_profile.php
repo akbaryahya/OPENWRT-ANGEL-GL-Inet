@@ -17,6 +17,8 @@ echo "Ip Rule :<input type=\"text\" name=\"ip_rule\" size=\"25\" value=\"\"/>";
 echo '<input type="checkbox" name="e_iprule" value="yes" >Enable Ip hunter';
 echo '<br><br>';
 echo "Apn :<input type=\"text\" name=\"apn\" size=\"12\" value=\"internet\"/>";
+echo '<input type="checkbox" name="dnscrypt" value="yes" >Dnscrypt';
+echo '<input type="checkbox" name="limitfree" value="yes" >Wshaper';
 echo '<input type="checkbox" name="kodok" value="yes" >Auto Kodok';
 echo '<input type="checkbox" name="use_vpn" value="yes" checked>Openvpn';
 echo '<input type="checkbox" name="use_inject" value="yes" checked>Inject';
@@ -45,6 +47,8 @@ if($_POST['update']){
     $ip_rule=$_POST['ip_rule'];
     $e_iprule=$_POST['e_iprule'];    
     $apn=$_POST['apn'];
+	$dnscrypt=$_POST['dnscrypt'];
+	$limitfree=$_POST['limitfree'];
     $kodok=$_POST['kodok'];
     $use_vpn=$_POST['use_vpn'];
     $use_inject=$_POST['use_inject'];
@@ -53,17 +57,19 @@ if($_POST['update']){
     $text_info=$_POST['text-info'];
     if ($e_iprule <> 'yes'){$e_iprule='no';}
     if ($use_vpn <> 'yes' ){$use_vpn='no';}
-    if ($kodok <> 'yes') {$kodok='no';}
+    if ($kodok <> 'yes') {$kodok='no';}	
     if ($use_inject<>'yes'){$use_inject='no';}
     exec('echo "enable_iprule \''.$e_iprule.'\'" > /root/profiles/'.$profile);     
     exec('echo "ip_rule \''.$ip_rule.'\'" >> /root/profiles/'.$profile);
     exec('echo "apn_modem \''.$apn.'\'" >> /root/profiles/'.$profile);
-    exec('echo "auto_kodok \''.$kodok.'\'" >> /root/profiles/'.$profile);
+    exec('echo "auto_kodok \''.$kodok.'\'" >> /root/profiles/'.$profile);	
     exec('echo "use_vpn \''.$use_vpn.'\'" >> /root/profiles/'.$profile);
     exec('echo "use_inject \''.$use_inject.'\'" >> /root/profiles/'.$profile);
     exec('echo "proxy_ip \''.$proxy.'\'" >> /root/profiles/'.$profile);
     exec('echo "proxy_port \''.$port.'\'" >> /root/profiles/'.$profile);
     exec('echo "payload_inject \''.$payload.'\'" >> /root/profiles/'.$profile);
+	exec('echo "limitfree \''.$limitfree.'\'" >> /root/profiles/'.$profile);
+	exec('echo "dnscrypt \''.$dnscrypt.'\'" >> /root/profiles/'.$profile);
     $text=explode(PHP_EOL,$text_info);
     $x=0;
     while($x<(count($text)))
@@ -129,7 +135,12 @@ else{echo '<input type="checkbox" name="use_vpn" value="yes" >Openvpn';}
 if ($listx[10]=='yes'){
 echo '<input type="checkbox" name="use_inject" value="yes" checked>Inject';}
 else{echo '<input type="checkbox" name="use_inject" value="yes" >Inject';}
-
+if ($listx[12]=='yes'){
+echo '<input type="checkbox" name="dnscrypt" value="yes" checked>Dnscrypt';}
+else{echo '<input type="checkbox" name="dnscrypt" value="yes" >Dnscrypt';}
+if ($listx[11]=='yes'){
+echo '<input type="checkbox" name="limitfree" value="yes" checked>Wshaper';}
+else{echo '<input type="checkbox" name="limitfree" value="yes" >Wshaper';}
 echo '<br><br>';
 echo "Proxy :<input type=\"text\" name=\"proxy\" size=\"17\" value=\"$listx[5]\"/>";
 echo "Port :<input type=\"text\" name=\"port\" size=\"6\" value=\"$listx[6]\"/>";

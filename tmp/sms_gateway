@@ -12,7 +12,6 @@ config global 'setting'
 	   option phonenumbers ''
 	   option color 'green'
 	   option version '27/03/2015'
-	   option source 'https://dl.dropboxusercontent.com/u/81253579/'
 END
 cat > /etc/init.d/sms_gateway << END
 #!/bin/sh /etc/rc.common
@@ -40,33 +39,6 @@ chmod 755 /etc/init.d/sms_gateway
 echo "install sms_gateway v2.5 selesai"
 echo "sms_gateway by Galih"
 exit 0
-;;
-
-"update")
-		source=`uci get sms_gateway.setting.source`
-		if [[ -z $source ]];then
-			echo "Update source tidak ditemukan"
-			exit 1
-		fi
-		ping google.com -c 1 > /dev/null
-		if [ $? == 1 ];then
-			echo "Gagal update, cek koneksi internet"
-			exit 1 
-		fi
-		cd /tmp/ > /dev/null
-		rm -f sms.tar > /dev/null
-		rm -f sms_gateway > /dev/null
-		wget --no-check-certificate $source/sms-gateway/sms.tar > /dev/null
-		if [ $? == 0 ];then
-			tar -xvf sms.tar -C / > /dev/null
-			chmod 744 sms_gateway > /dev/null
-			bash /tmp/sms_gateway install > /dev/null
-			echo "Update SMS Gateway Selessai"
-			exit 0
-		else
-			echo "Gagal update, cek koneksi internet"
-			exit 1
-		fi
 ;;
 
 "bulk_sms")

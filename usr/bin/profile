@@ -589,7 +589,7 @@ cat > /etc/config/uhttpd << END
 config uhttpd main
 	list listen_http	0.0.0.0:81
 	list listen_https	0.0.0.0:443
-	option home		/www/profile/profile
+	option home		/www/profile
 	option rfc1918_filter 1
 	option max_requests 3
 	option cert		/etc/uhttpd.crt
@@ -663,7 +663,6 @@ END
     if [ ${PWD##*/} <> 'bi' ];then
        rm -f profile
     fi
-uci set network.lan.dns="8.8.8.8 8.8.4.4"
 uci commit network
 echo "install scrypt profile selesai..."
 ;;
@@ -680,6 +679,8 @@ echo "install scrypt profile selesai..."
         v9=`grep -w "auto_kodok" /root/profiles/$2 |awk -F"'" '{print $2}'`
         v10=`grep -w "use_vpn" /root/profiles/$2 |awk -F"'" '{print $2}'`
         v11=`grep -w "use_inject" /root/profiles/$2 |awk -F"'" '{print $2}'`
+		v12=`grep -w "limitfree" /root/profiles/$2 |awk -F"'" '{print $2}'`
+		v13=`grep -w "dnscrypt" /root/profiles/$2 |awk -F"'" '{print $2}'`
         echo $v1
         echo $v2
         echo $v3
@@ -691,6 +692,8 @@ echo "install scrypt profile selesai..."
         echo $v9
         echo $v10
         echo $v11
+		echo $v12
+		echo $v13
     else
         echo "perintah yang tersedia:"
         echo "profile show-config [nama profile]" 
